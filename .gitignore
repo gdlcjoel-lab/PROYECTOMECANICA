@@ -1,0 +1,13 @@
+# Development artifacts
+preview_base.png
+preview_interactive.png
+preview_encoding_test.png
+PROJECT_CONTEXT.md
+
+# Claude Code config
+.claude/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo

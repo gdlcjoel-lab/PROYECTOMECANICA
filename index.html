@@ -1,0 +1,1707 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Rocket Trajectory Simulation — EETAC · UPC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ══════════════════════════════════════════
+       RESET & TOKENS
+    ══════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --black:   #040810;
+      --blue:    #3b82f6;
+      --orange:  #f97316;
+      --cyan:    #22d3ee;
+      --red:     #ef4444;
+      --green:   #22c55e;
+      --white:   #f1f5f9;
+      --muted:   #64748b;
+      --card-bg: rgba(255,255,255,0.03);
+      --card-border: rgba(255,255,255,0.07);
+      --T: 'Space Grotesk', sans-serif;
+      --M: 'JetBrains Mono', monospace;
+      --B: 'Inter', sans-serif;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--black);
+      color: var(--white);
+      font-family: var(--B);
+      overflow-x: hidden;
+      overflow-y: hidden; /* locked until main content */
+    }
+
+    /* ══════════════════════════════════════════
+       GLOBAL FADE-TO-BLACK CURTAIN
+    ══════════════════════════════════════════ */
+    #curtain {
+      position: fixed; inset: 0;
+      z-index: 960;
+      background: #000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1.2s ease;
+    }
+    #curtain.show { opacity: 1; pointer-events: all; }
+
+    /* ══════════════════════════════════════════
+       PHASE 1 — COUNTDOWN
+    ══════════════════════════════════════════ */
+    /* ══════════════════════════════════════════
+       SPLASH — PRESS TO BEGIN
+    ══════════════════════════════════════════ */
+    #splash {
+      position: fixed; inset: 0;
+      z-index: 1100;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: opacity .8s ease;
+    }
+    #splash.out { opacity: 0; pointer-events: none; }
+
+    /* scanlines */
+    #splash::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 3px,
+        rgba(0,0,0,0.18) 3px, rgba(0,0,0,0.18) 4px
+      );
+      pointer-events: none;
+    }
+
+    .splash-ring {
+      width: 90px; height: 90px;
+      border-radius: 50%;
+      border: 1px solid rgba(239,68,68,.25);
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+      margin-bottom: 2.5rem;
+    }
+    .splash-ring::before {
+      content: '';
+      position: absolute; inset: -12px;
+      border-radius: 50%;
+      border: 1px solid rgba(239,68,68,.12);
+      animation: splashPulse 2.2s ease-in-out infinite;
+    }
+    .splash-ring::after {
+      content: '';
+      position: absolute; inset: -24px;
+      border-radius: 50%;
+      border: 1px solid rgba(239,68,68,.06);
+      animation: splashPulse 2.2s ease-in-out infinite .4s;
+    }
+    @keyframes splashPulse {
+      0%,100%{ transform:scale(1); opacity:1; }
+      50%{ transform:scale(1.06); opacity:.4; }
+    }
+    .splash-icon {
+      width: 28px; height: 28px;
+      border-left: 2px solid rgba(239,68,68,.7);
+      border-bottom: 2px solid rgba(239,68,68,.7);
+      transform: rotate(-45deg) translate(4px, -4px);
+    }
+
+    .splash-label {
+      font-family: var(--M);
+      font-size: clamp(.55rem, 1.4vw, .82rem);
+      letter-spacing: .55em;
+      color: rgba(239,68,68,.8);
+      margin-bottom: .6rem;
+      animation: splashBlink 1.8s ease-in-out infinite;
+    }
+    @keyframes splashBlink {
+      0%,100%{ opacity:1; } 50%{ opacity:.35; }
+    }
+    .splash-sub {
+      font-family: var(--M);
+      font-size: clamp(.42rem, 1vw, .6rem);
+      letter-spacing: .4em;
+      color: rgba(241,245,249,.18);
+      text-align: center;
+    }
+
+    /* ══════════════════════════════════════════ */
+
+    #phase-countdown {
+      position: fixed; inset: 0;
+      z-index: 1000;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 1s ease;
+    }
+    #phase-countdown.out { opacity: 0; pointer-events: none; }
+
+    /* scanline texture */
+    #phase-countdown::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 3px,
+        rgba(0,0,0,0.18) 3px, rgba(0,0,0,0.18) 4px
+      );
+      pointer-events: none;
+    }
+
+    /* subtle flicker */
+    @keyframes flicker {
+      0%,100%{opacity:1} 92%{opacity:1} 93%{opacity:.85} 94%{opacity:1} 97%{opacity:.9} 98%{opacity:1}
+    }
+    #phase-countdown { animation: flicker 5s infinite; }
+
+    #cd-eyebrow {
+      font-family: var(--M);
+      font-size: clamp(.55rem, 1.4vw, .85rem);
+      letter-spacing: .55em;
+      color: rgba(239,68,68,.6);
+      margin-bottom: .8rem;
+    }
+
+    #cd-number {
+      font-family: var(--M);
+      font-size: clamp(8rem, 22vw, 20rem);
+      font-weight: 700;
+      line-height: 1;
+      color: var(--red);
+      text-shadow: 0 0 40px rgba(239,68,68,.9), 0 0 90px rgba(239,68,68,.45);
+      transition: color .3s, text-shadow .3s;
+      position: relative; z-index: 1;
+    }
+
+    #cd-number.flash {
+      animation: cdFlash .12s ease;
+    }
+    @keyframes cdFlash {
+      50% { opacity: .25; }
+    }
+
+    #cd-number.go {
+      color: var(--green);
+      text-shadow: 0 0 40px rgba(34,197,94,.9), 0 0 90px rgba(34,197,94,.4);
+    }
+
+    #cd-footer {
+      font-family: var(--M);
+      font-size: clamp(.5rem, 1.1vw, .7rem);
+      letter-spacing: .35em;
+      color: rgba(241,245,249,.18);
+      margin-top: 2rem;
+      text-align: center;
+    }
+
+    /* ══════════════════════════════════════════
+       PHASE 2 — COCKPIT
+    ══════════════════════════════════════════ */
+    #phase-cockpit {
+      position: fixed; inset: 0;
+      z-index: 900;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1.4s ease;
+    }
+    #phase-cockpit.in { opacity: 1; pointer-events: all; }
+
+    #cockpit-bg {
+      position: absolute; inset: 0;
+      background: url('fotocabina.jpeg') center center / cover no-repeat;
+    }
+
+    /* dark vignette */
+    #cockpit-bg::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 50% 60%, transparent 30%, rgba(4,8,16,.75) 100%);
+    }
+
+    /* top status bar */
+    #cockpit-status {
+      position: absolute;
+      top: 4%;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      z-index: 2;
+    }
+    #cockpit-status .sys {
+      font-family: var(--M);
+      font-size: clamp(.45rem, 1.1vw, .7rem);
+      letter-spacing: .45em;
+      color: rgba(34,197,94,.85);
+      margin-bottom: .25rem;
+    }
+    #cockpit-status .mission {
+      font-family: var(--M);
+      font-size: clamp(.4rem, 1vw, .65rem);
+      letter-spacing: .35em;
+      color: rgba(241,245,249,.3);
+    }
+
+    /* ignition button area — positioned over the ignition button in the photo */
+    #ignition-wrap {
+      position: absolute;
+      right: 17%;
+      bottom: 14%;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: .6rem;
+    }
+
+    #ignition-prompt {
+      font-family: var(--M);
+      font-size: clamp(.38rem, .95vw, .62rem);
+      letter-spacing: .3em;
+      color: rgba(249,115,22,.9);
+      text-align: center;
+      animation: promptPulse 1.8s ease-in-out infinite;
+    }
+    @keyframes promptPulse {
+      0%,100%{opacity:1} 50%{opacity:.3}
+    }
+
+    #ignition-btn {
+      width: clamp(58px, 7.5vw, 96px);
+      height: clamp(58px, 7.5vw, 96px);
+      border-radius: 50%;
+      border: 2px solid rgba(249,115,22,.85);
+      background: rgba(249,115,22,.12);
+      color: var(--orange);
+      font-family: var(--M);
+      font-size: clamp(.38rem, .9vw, .6rem);
+      font-weight: 700;
+      letter-spacing: .08em;
+      cursor: pointer;
+      position: relative;
+      transition: background .2s, box-shadow .2s, transform .15s;
+      outline: none;
+    }
+    #ignition-btn::before,
+    #ignition-btn::after {
+      content: '';
+      position: absolute;
+      border-radius: 50%;
+      border: 1px solid rgba(249,115,22,.35);
+      inset: -9px;
+      animation: igPulse 2s ease-in-out infinite;
+    }
+    #ignition-btn::after {
+      inset: -18px;
+      border-color: rgba(249,115,22,.18);
+      animation-delay: .35s;
+    }
+    @keyframes igPulse {
+      0%,100%{ transform:scale(1); opacity:1; }
+      50%{ transform:scale(1.08); opacity:.45; }
+    }
+    #ignition-btn:hover {
+      background: rgba(249,115,22,.3);
+      box-shadow: 0 0 28px rgba(249,115,22,.55);
+    }
+    #ignition-btn:active { transform: scale(.93); }
+
+    /* cockpit shake */
+    @keyframes shake {
+      0%   {transform:translate(0,0)rotate(0)}
+      10%  {transform:translate(-6px,-3px)rotate(-.5deg)}
+      20%  {transform:translate(6px,4px)rotate(.5deg)}
+      30%  {transform:translate(-5px,6px)rotate(-.4deg)}
+      40%  {transform:translate(5px,-5px)rotate(.4deg)}
+      50%  {transform:translate(-7px,3px)rotate(-.6deg)}
+      60%  {transform:translate(7px,-3px)rotate(.6deg)}
+      70%  {transform:translate(-4px,5px)rotate(-.3deg)}
+      80%  {transform:translate(4px,-6px)rotate(.3deg)}
+      90%  {transform:translate(-5px,4px)rotate(-.4deg)}
+      100% {transform:translate(0,0)rotate(0)}
+    }
+    #phase-cockpit.shake { animation: shake .85s ease-in-out; }
+
+    /* ══════════════════════════════════════════
+       PHASE 3 — LAUNCH VIDEO (VIDDEF)
+    ══════════════════════════════════════════ */
+    #phase-video {
+      position: fixed; inset: 0;
+      z-index: 800;
+      background: #000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1s ease;
+    }
+    #phase-video.in { opacity: 1; pointer-events: all; }
+
+    #viddef {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* ══════════════════════════════════════════
+       NAV
+    ══════════════════════════════════════════ */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0;
+      z-index: 500;
+      padding: 1.1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      opacity: 0;
+      transform: translateY(-16px);
+      transition: opacity .6s ease, transform .6s ease, background .4s;
+    }
+    nav.show { opacity: 1; transform: translateY(0); }
+    nav.scrolled {
+      background: rgba(4,8,16,.85);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid rgba(255,255,255,.05);
+    }
+    .nav-logo {
+      font-family: var(--M);
+      font-size: .72rem;
+      letter-spacing: .3em;
+      color: var(--blue);
+    }
+    .nav-links { display: flex; gap: 2rem; list-style: none; }
+    .nav-links a {
+      font-family: var(--M);
+      font-size: .62rem;
+      letter-spacing: .25em;
+      color: var(--muted);
+      text-decoration: none;
+      text-transform: uppercase;
+      transition: color .2s;
+    }
+    .nav-links a:hover { color: var(--white); }
+    @media(max-width:640px){ .nav-links{display:none;} }
+
+    /* ══════════════════════════════════════════
+       MAIN CONTENT
+    ══════════════════════════════════════════ */
+    #main {
+      opacity: 0;
+      transition: opacity 1.4s ease;
+    }
+    #main.show { opacity: 1; }
+
+    /* ══════════════════════════════════════════
+       HERO
+    ══════════════════════════════════════════ */
+    #hero {
+      position: relative;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    #hero-video {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      opacity: .55;
+    }
+    #hero-grad {
+      position: absolute; inset: 0;
+      background: linear-gradient(
+        to bottom,
+        rgba(4,8,16,.4) 0%,
+        rgba(4,8,16,.05) 45%,
+        rgba(4,8,16,.85) 100%
+      );
+    }
+    #hero-body {
+      position: relative; z-index: 2;
+      text-align: center;
+      padding: 2rem;
+      max-width: 900px;
+    }
+
+    .h-eyebrow {
+      font-family: var(--M);
+      font-size: clamp(.55rem,1.4vw,.82rem);
+      letter-spacing: .5em;
+      color: var(--blue);
+      margin-bottom: 1.4rem;
+      opacity: 0; transform: translateY(18px);
+      transition: all .8s ease .2s;
+    }
+    .h-eyebrow.show { opacity:1; transform:translateY(0); }
+
+    .h-title {
+      font-family: var(--T);
+      font-size: clamp(2.4rem,7.5vw,6rem);
+      font-weight: 700;
+      line-height: 1.04;
+      letter-spacing: -.02em;
+      margin-bottom: .9rem;
+      opacity: 0; transform: translateY(28px);
+      transition: all .9s ease .45s;
+    }
+    .h-title.show { opacity:1; transform:translateY(0); }
+
+    .h-sub {
+      font-family: var(--M);
+      font-size: clamp(.65rem,1.8vw,1rem);
+      color: var(--muted);
+      letter-spacing: .25em;
+      margin-bottom: 1.8rem;
+      opacity: 0; transform: translateY(18px);
+      transition: all .8s ease .65s;
+    }
+    .h-sub.show { opacity:1; transform:translateY(0); }
+
+    .h-authors {
+      font-family: var(--M);
+      font-size: clamp(.5rem,1.1vw,.7rem);
+      color: rgba(241,245,249,.28);
+      letter-spacing: .14em;
+      line-height: 1.8;
+      opacity: 0;
+      transition: opacity .8s ease .85s;
+    }
+    .h-authors.show { opacity:1; }
+
+    .scroll-hint {
+      position: absolute; bottom: 2rem; left: 50%;
+      transform: translateX(-50%);
+      z-index: 2;
+      display: flex; flex-direction: column; align-items: center; gap: .4rem;
+      opacity: 0;
+      animation: hintIn 1s ease 3s forwards;
+    }
+    @keyframes hintIn { to{opacity:1;} }
+    .scroll-hint span {
+      font-family: var(--M);
+      font-size: .58rem;
+      letter-spacing: .35em;
+      color: rgba(241,245,249,.32);
+    }
+    .chevron {
+      width: 18px; height: 18px;
+      border-right: 2px solid rgba(241,245,249,.3);
+      border-bottom: 2px solid rgba(241,245,249,.3);
+      transform: rotate(45deg);
+      animation: chevBounce 1.6s ease-in-out infinite;
+    }
+    @keyframes chevBounce {
+      0%,100%{transform:rotate(45deg) translateY(0);opacity:1;}
+      50%{transform:rotate(45deg) translateY(7px);opacity:.4;}
+    }
+
+    /* ══════════════════════════════════════════
+       SHARED SECTION STYLES
+    ══════════════════════════════════════════ */
+    .section {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 6rem 2rem;
+    }
+    .section-label {
+      font-family: var(--M);
+      font-size: .68rem;
+      letter-spacing: .5em;
+      color: var(--blue);
+      text-transform: uppercase;
+      margin-bottom: .9rem;
+    }
+    .section-title {
+      font-family: var(--T);
+      font-size: clamp(1.9rem,4.5vw,3.2rem);
+      font-weight: 700;
+      line-height: 1.1;
+      margin-bottom: 1.2rem;
+    }
+    .section-bar {
+      width: 48px; height: 2px;
+      background: var(--blue);
+      margin-bottom: 2.8rem;
+    }
+    p { line-height: 1.75; color: rgba(241,245,249,.65); }
+    strong { color: var(--white); }
+
+    /* reveal-on-scroll */
+    .reveal {
+      opacity: 0; transform: translateY(28px);
+      transition: opacity .7s ease, transform .7s ease;
+    }
+    .reveal.on { opacity:1; transform:translateY(0); }
+
+    /* ══════════════════════════════════════════
+       STATS BAR
+    ══════════════════════════════════════════ */
+    #stats {
+      border-top: 1px solid rgba(59,130,246,.12);
+      border-bottom: 1px solid rgba(59,130,246,.12);
+      background: rgba(59,130,246,.025);
+      padding: 3.5rem 2rem;
+    }
+    .stats-grid {
+      max-width: 1200px; margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 2rem;
+      text-align: center;
+    }
+    .stat-val {
+      font-family: var(--M);
+      font-size: clamp(1.9rem,4.5vw,3rem);
+      font-weight: 700;
+      color: var(--blue);
+      line-height: 1;
+      margin-bottom: .45rem;
+    }
+    .stat-val .unit { font-size: .55em; color: var(--muted); margin-left: .15em; }
+    .stat-lbl {
+      font-family: var(--M);
+      font-size: .62rem;
+      letter-spacing: .3em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    /* ══════════════════════════════════════════
+       PHYSICAL MODEL
+    ══════════════════════════════════════════ */
+    #model .inner {
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      gap: 4rem;
+      align-items: start;
+    }
+    @media(max-width:800px){ #model .inner{grid-template-columns:1fr;} }
+
+    .force-table {
+      width: 100%; border-collapse: collapse;
+      font-family: var(--M);
+      font-size: .82rem;
+      margin-top: 1.5rem;
+    }
+    .force-table th {
+      text-align: left;
+      padding: .65rem 1rem;
+      font-size: .6rem;
+      letter-spacing: .3em;
+      color: var(--muted);
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      text-transform: uppercase;
+    }
+    .force-table td {
+      padding: .9rem 1rem;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+      vertical-align: top;
+    }
+    .force-table td:first-child { color: var(--blue); font-weight: 500; width: 32%; }
+    .force-table td:last-child  { color: rgba(241,245,249,.65); font-size: .76rem; }
+
+    /* ══════════════════════════════════════════
+       PARAMS MINI GRID
+    ══════════════════════════════════════════ */
+    .params-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+    .param-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 1.1rem 1.2rem;
+      transition: border-color .25s, box-shadow .25s;
+    }
+    .param-card:hover {
+      border-color: rgba(59,130,246,.35);
+      box-shadow: 0 0 22px rgba(59,130,246,.08);
+    }
+    .param-lbl {
+      font-family: var(--M);
+      font-size: .58rem;
+      letter-spacing: .25em;
+      color: var(--muted);
+      margin-bottom: .4rem;
+      text-transform: uppercase;
+    }
+    .param-val {
+      font-family: var(--M);
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--white);
+    }
+    .param-val .u { font-size: .65em; color: var(--muted); margin-left: .1em; }
+
+    /* ══════════════════════════════════════════
+       RESULTS
+    ══════════════════════════════════════════ */
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px,1fr));
+      gap: 1.5rem;
+    }
+    .res-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      overflow: hidden;
+      transition: border-color .28s, transform .28s, box-shadow .28s;
+      cursor: zoom-in;
+    }
+    .res-card:hover {
+      border-color: rgba(59,130,246,.4);
+      box-shadow: 0 0 32px rgba(59,130,246,.1);
+      transform: translateY(-5px);
+    }
+    .res-card img { width: 100%; display: block; }
+    .res-card-lbl {
+      padding: .9rem 1.1rem;
+      font-family: var(--M);
+      font-size: .65rem;
+      letter-spacing: .2em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    /* ══════════════════════════════════════════
+       ANALYSIS / TASKS
+    ══════════════════════════════════════════ */
+    .tabs {
+      display: flex; gap: .5rem; flex-wrap: wrap;
+      margin-bottom: 2rem;
+    }
+    .tab-btn {
+      font-family: var(--M);
+      font-size: .65rem;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      padding: .55rem 1.1rem;
+      border: 1px solid rgba(255,255,255,.1);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 6px;
+      transition: all .2s;
+    }
+    .tab-btn:hover { border-color: var(--blue); color: var(--white); }
+    .tab-btn.on {
+      background: rgba(59,130,246,.14);
+      border-color: var(--blue);
+      color: var(--blue);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.on {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+      align-items: start;
+    }
+    @media(max-width:700px){ .tab-panel.on{grid-template-columns:1fr;} }
+
+    .insight {
+      background: rgba(249,115,22,.07);
+      border: 1px solid rgba(249,115,22,.2);
+      border-radius: 8px;
+      padding: 1.1rem 1.2rem;
+      margin-top: 1.4rem;
+    }
+    .insight-lbl {
+      font-family: var(--M);
+      font-size: .6rem;
+      letter-spacing: .3em;
+      color: var(--orange);
+      margin-bottom: .45rem;
+    }
+    .insight p { font-size: .87rem; color: rgba(241,245,249,.78); }
+
+    .data-tbl {
+      width: 100%; border-collapse: collapse;
+      font-family: var(--M);
+      font-size: .78rem;
+    }
+    .data-tbl th {
+      text-align: left;
+      padding: .55rem .8rem;
+      font-size: .6rem;
+      letter-spacing: .25em;
+      color: var(--muted);
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      text-transform: uppercase;
+    }
+    .data-tbl td {
+      padding: .7rem .8rem;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+      color: rgba(241,245,249,.7);
+    }
+    .data-tbl td.hl { color: var(--blue); font-weight: 600; }
+
+    /* ══════════════════════════════════════════
+       BONUS — ISS MISSION
+    ══════════════════════════════════════════ */
+    #bonus {
+      background: linear-gradient(135deg,rgba(34,211,238,.03) 0%,transparent 55%);
+      border-top: 1px solid rgba(34,211,238,.1);
+      border-bottom: 1px solid rgba(34,211,238,.06);
+      padding: 6rem 2rem;
+    }
+    .bonus-inner { max-width: 1200px; margin: 0 auto; }
+
+    .bonus-header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 2rem;
+      align-items: start;
+      margin-bottom: 4rem;
+    }
+    @media(max-width:700px){ .bonus-header{grid-template-columns:1fr;} }
+
+    .bonus-kpis {
+      display: flex; flex-direction: column; gap: .8rem;
+      text-align: right;
+    }
+    .bkpi-val {
+      font-family: var(--M);
+      font-size: clamp(1.2rem,2.5vw,1.55rem);
+      font-weight: 700;
+      color: var(--cyan);
+    }
+    .bkpi-lbl {
+      font-family: var(--M);
+      font-size: .58rem;
+      letter-spacing: .28em;
+      color: var(--muted);
+      display: block;
+    }
+
+    /* timeline */
+    .timeline { position: relative; display: flex; flex-direction: column; }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 19px; top: 0; bottom: 0; width: 1px;
+      background: linear-gradient(to bottom, var(--cyan), rgba(34,211,238,.08));
+    }
+    .tl-phase {
+      display: grid;
+      grid-template-columns: 40px 1fr;
+      gap: 1.4rem;
+      padding-bottom: 2.4rem;
+      align-items: start;
+    }
+    .tl-dot {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      border: 2px solid var(--cyan);
+      background: var(--black);
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--M);
+      font-size: .68rem;
+      font-weight: 700;
+      color: var(--cyan);
+      flex-shrink: 0;
+      position: relative; z-index: 1;
+    }
+    .tl-dot.done {
+      background: rgba(34,211,238,.1);
+      box-shadow: 0 0 16px rgba(34,211,238,.3);
+    }
+    .tl-lbl {
+      font-family: var(--M);
+      font-size: .6rem;
+      letter-spacing: .3em;
+      color: var(--cyan);
+      margin-bottom: .25rem;
+      text-transform: uppercase;
+    }
+    .tl-title {
+      font-family: var(--T);
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: .3rem;
+    }
+    .tl-detail {
+      font-family: var(--M);
+      font-size: .76rem;
+      color: rgba(241,245,249,.45);
+    }
+
+    /* ══════════════════════════════════════════
+       TEAM
+    ══════════════════════════════════════════ */
+    .team-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px,1fr));
+      gap: 1.4rem;
+      margin-top: 2.8rem;
+    }
+    .team-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1.5rem 1rem 1.2rem;
+      text-align: center;
+      transition: all .28s;
+    }
+    .team-card:hover {
+      border-color: rgba(59,130,246,.3);
+      background: rgba(59,130,246,.05);
+      transform: translateY(-4px);
+    }
+    .avatar {
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      border: 2px solid rgba(59,130,246,.3);
+      margin: 0 auto 1rem;
+      overflow: hidden;
+      box-shadow: 0 0 20px rgba(59,130,246,.12);
+      transition: border-color .28s, box-shadow .28s;
+    }
+    .team-card:hover .avatar {
+      border-color: rgba(59,130,246,.7);
+      box-shadow: 0 0 28px rgba(59,130,246,.25);
+    }
+    .avatar img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      object-position: center top;
+      display: block;
+    }
+    .team-name {
+      font-family: var(--T);
+      font-size: .88rem;
+      font-weight: 600;
+    }
+
+    /* ══════════════════════════════════════════
+       FOOTER
+    ══════════════════════════════════════════ */
+    footer {
+      border-top: 1px solid rgba(255,255,255,.05);
+      padding: 3.5rem 2rem;
+      text-align: center;
+      font-family: var(--M);
+    }
+    .ft-uni { font-size: .88rem; font-weight: 500; margin-bottom: .4rem; }
+    .ft-info {
+      font-size: .65rem;
+      letter-spacing: .2em;
+      color: var(--muted);
+      margin-bottom: .25rem;
+    }
+    .ft-copy {
+      margin-top: 1.5rem;
+      font-size: .6rem;
+      letter-spacing: .2em;
+      color: rgba(241,245,249,.15);
+    }
+    .ft-ai {
+      margin-top: 1.2rem;
+      padding: .75rem 1.5rem;
+      border: 1px solid rgba(255,255,255,.05);
+      border-radius: 8px;
+      display: inline-block;
+      font-size: .62rem;
+      letter-spacing: .05em;
+      color: rgba(241,245,249,.25);
+      line-height: 1.6;
+      max-width: 600px;
+    }
+    .ft-ai::before {
+      content: '✦ ';
+      color: rgba(59,130,246,.4);
+    }
+
+    /* ══════════════════════════════════════════
+       LIGHTBOX
+    ══════════════════════════════════════════ */
+    #lightbox {
+      position: fixed; inset: 0;
+      z-index: 2000;
+      background: rgba(4,8,16,.92);
+      backdrop-filter: blur(16px);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none;
+      transition: opacity .3s;
+    }
+    #lightbox.show { opacity: 1; pointer-events: all; cursor: zoom-out; }
+    #lightbox img { max-width: 92vw; max-height: 88vh; border-radius: 8px; }
+  </style>
+</head>
+<body>
+
+<!-- ── SPLASH ─────────────────────────────────── -->
+<div id="splash" onclick="beginExperience()">
+  <div class="splash-ring"><div class="splash-icon"></div></div>
+  <div class="splash-label">PRESS TO BEGIN</div>
+  <div class="splash-sub">CLASSICAL MECHANICS PROJECT II &nbsp;·&nbsp; EETAC · UPC</div>
+</div>
+
+<!-- ── GLOBAL CURTAIN ────────────────────────── -->
+<div id="curtain"></div>
+
+<!-- ── LIGHTBOX ─────────────────────────────── -->
+<div id="lightbox" onclick="closeLightbox()">
+  <img id="lb-img" src="" alt="">
+</div>
+
+<!-- ════════════════════════════════════════════
+     PHASE 1 — COUNTDOWN
+════════════════════════════════════════════ -->
+<div id="phase-countdown">
+  <div id="cd-eyebrow">T MINUS</div>
+  <div id="cd-number">10</div>
+  <div id="cd-footer">CLASSICAL MECHANICS PROJECT II &nbsp;·&nbsp; EETAC · UPC<br>3D ROCKET TRAJECTORY SIMULATION</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     PHASE 2 — COCKPIT
+════════════════════════════════════════════ -->
+<div id="phase-cockpit">
+  <div id="cockpit-bg"></div>
+
+  <div id="cockpit-status">
+    <div class="sys">● ALL SYSTEMS NOMINAL</div>
+    <div class="mission">MISSION CONTROL &nbsp;·&nbsp; CLASSICAL MECHANICS PROJECT II</div>
+  </div>
+
+  <div id="ignition-wrap">
+    <div id="ignition-prompt">IGNITION SEQUENCE&nbsp;&nbsp;·&nbsp;&nbsp;AWAITING AUTHORIZATION</div>
+    <button id="ignition-btn" onclick="fireIgnition()">IGNITE</button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     PHASE 3 — LAUNCH VIDEO (VIDDEF)
+════════════════════════════════════════════ -->
+<div id="phase-video">
+  <video id="viddef" src="VIDDEF.mp4" playsinline></video>
+</div>
+
+<!-- ════════════════════════════════════════════
+     NAV
+════════════════════════════════════════════ -->
+<nav id="nav">
+  <div class="nav-logo">MSAT &nbsp;·&nbsp; PROJ I</div>
+  <ul class="nav-links">
+    <li><a href="#hero">Home</a></li>
+    <li><a href="#model">Model</a></li>
+    <li><a href="#results">Results</a></li>
+    <li><a href="#analysis">Analysis</a></li>
+    <li><a href="#bonus">Bonus ISS</a></li>
+    <li><a href="#team">Team</a></li>
+    <li><a href="code.html" style="color:var(--accent);border:1px solid rgba(74,158,255,.35);border-radius:5px;padding:.2rem .65rem;font-size:.78rem;">Source Code</a></li>
+  </ul>
+</nav>
+
+<!-- ════════════════════════════════════════════
+     MAIN CONTENT
+════════════════════════════════════════════ -->
+<div id="main">
+
+  <!-- ── HERO ─────────────────────────────── -->
+  <section id="hero">
+    <video id="hero-video"
+      src="Enciende_motores_deja_nave_est%C3%A1tica_202605281829.mp4"
+      autoplay loop muted playsinline>
+    </video>
+    <div id="hero-grad"></div>
+    <div id="hero-body">
+      <div class="h-eyebrow" id="he">EETAC &nbsp;·&nbsp; UPC &nbsp;·&nbsp; CLASSICAL MECHANICS</div>
+      <h1 class="h-title" id="ht">3D ROCKET TRAJECTORY<br>SIMULATION</h1>
+      <div class="h-sub" id="hs">CLASSICAL MECHANICS &nbsp;·&nbsp; PROJECT I</div>
+      <div class="h-authors" id="ha">
+        Rubén Praena &nbsp;·&nbsp; Claudia Ros &nbsp;·&nbsp; Miguel Sanz<br>
+        Elishka Mrázek &nbsp;·&nbsp; Joel García &nbsp;·&nbsp; Giulia Latorre
+      </div>
+    </div>
+    <div class="scroll-hint">
+      <span>SCROLL</span>
+      <div class="chevron"></div>
+    </div>
+  </section>
+
+  <!-- ── STATS ─────────────────────────────── -->
+  <div id="stats">
+    <div class="stats-grid">
+      <div class="reveal">
+        <div class="stat-val">
+          <span class="counter" data-target="11278" data-dec="0">0</span><span class="unit">m</span>
+        </div>
+        <div class="stat-lbl">Max Altitude</div>
+      </div>
+      <div class="reveal">
+        <div class="stat-val">
+          <span class="counter" data-target="353" data-dec="0">0</span><span class="unit">m/s</span>
+        </div>
+        <div class="stat-lbl">Peak Speed</div>
+      </div>
+      <div class="reveal">
+        <div class="stat-val">
+          <span class="counter" data-target="227.7" data-dec="1">0</span><span class="unit">s</span>
+        </div>
+        <div class="stat-lbl">Flight Time</div>
+      </div>
+      <div class="reveal">
+        <div class="stat-val">
+          <span class="counter" data-target="413" data-dec="0">0</span><span class="unit">km</span>
+        </div>
+        <div class="stat-lbl">ISS Altitude (Bonus)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PHYSICAL MODEL ────────────────────── -->
+  <section id="model" class="section">
+    <div class="inner">
+      <div>
+        <div class="section-label reveal">Physical Model</div>
+        <h2 class="section-title reveal">Equations<br>of Motion</h2>
+        <div class="section-bar reveal"></div>
+        <p class="reveal">
+          3D simulation using <strong>explicit Euler integration</strong> with
+          time step dt&nbsp;=&nbsp;0.1&nbsp;s. The rocket is launched vertically
+          from the equator in a local inertial reference frame
+          (x&nbsp;=&nbsp;East, y&nbsp;=&nbsp;North, z&nbsp;=&nbsp;Up).
+        </p>
+        <table class="force-table reveal">
+          <thead>
+            <tr><th>Force</th><th>Expression</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Gravity</td><td>g(z) = −GM / (R+z)² ẑ</td></tr>
+            <tr><td>Drag</td><td>F<sub>D</sub> = −½ C<sub>d</sub> A ρ(z) |v| v</td></tr>
+            <tr><td>Thrust</td><td>F<sub>T</sub> = T ẑ &nbsp;&nbsp;(t &lt; t<sub>burn</sub>)</td></tr>
+            <tr><td>Coriolis</td><td>a<sub>C</sub> = −2 ω⃗ × v⃗</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- SVG rocket diagram -->
+      <div class="reveal" style="display:flex;align-items:center;justify-content:center;">
+        <svg viewBox="0 0 220 390" width="220" height="390" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="ao" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L7,3z" fill="#f97316"/>
+            </marker>
+            <marker id="ar" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L7,3z" fill="#ef4444"/>
+            </marker>
+            <marker id="ab" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L7,3z" fill="#3b82f6"/>
+            </marker>
+            <marker id="ac" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L7,3z" fill="#22d3ee"/>
+            </marker>
+            <marker id="aw" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L7,3z" fill="rgba(241,245,249,.4)"/>
+            </marker>
+          </defs>
+          <g transform="translate(110,195)">
+            <!-- velocity -->
+            <line x1="0" y1="-55" x2="0" y2="-140" stroke="rgba(241,245,249,.35)" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#aw)"/>
+            <text x="6" y="-100" fill="rgba(241,245,249,.35)" font-family="JetBrains Mono,monospace" font-size="10">v⃗</text>
+            <!-- drag -->
+            <line x1="26" y1="-130" x2="26" y2="-65" stroke="#3b82f6" stroke-width="2" marker-end="url(#ab)"/>
+            <text x="33" y="-102" fill="#3b82f6" font-family="JetBrains Mono,monospace" font-size="10">DRAG</text>
+            <!-- coriolis -->
+            <line x1="-22" y1="-18" x2="-92" y2="-18" stroke="#22d3ee" stroke-width="2" marker-end="url(#ac)"/>
+            <text x="-90" y="-28" fill="#22d3ee" font-family="JetBrains Mono,monospace" font-size="9">CORIOLIS</text>
+            <!-- gravity -->
+            <line x1="-26" y1="38" x2="-26" y2="108" stroke="#ef4444" stroke-width="2" marker-end="url(#ar)"/>
+            <text x="-72" y="88" fill="#ef4444" font-family="JetBrains Mono,monospace" font-size="9">GRAVITY</text>
+            <!-- thrust -->
+            <line x1="0" y1="96" x2="0" y2="165" stroke="#f97316" stroke-width="2.5" marker-end="url(#ao)"/>
+            <text x="7" y="150" fill="#f97316" font-family="JetBrains Mono,monospace" font-size="10">THRUST</text>
+            <!-- rocket: nose -->
+            <polygon points="0,-55 -17,-15 17,-15" fill="#1e293b" stroke="#3b82f6" stroke-width="1.5"/>
+            <!-- body -->
+            <rect x="-17" y="-15" width="34" height="110" rx="2" fill="#0f172a" stroke="#3b82f6" stroke-width="1.5"/>
+            <!-- window -->
+            <circle cx="0" cy="20" r="7" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1"/>
+            <!-- fins -->
+            <polygon points="-17,95 -34,122 -17,108" fill="#0f172a" stroke="#3b82f6" stroke-width="1"/>
+            <polygon points="17,95 34,122 17,108" fill="#0f172a" stroke="#3b82f6" stroke-width="1"/>
+            <!-- engine glow -->
+            <ellipse cx="0" cy="98" rx="9" ry="4" fill="#f97316" opacity=".8"/>
+            <ellipse cx="0" cy="104" rx="6" ry="9" fill="#f97316" opacity=".3"/>
+          </g>
+          <!-- ground -->
+          <line x1="25" y1="355" x2="195" y2="355" stroke="rgba(241,245,249,.08)" stroke-width="1" stroke-dasharray="4,4"/>
+          <text x="35" y="369" fill="rgba(241,245,249,.18)" font-family="JetBrains Mono,monospace" font-size="8.5" letter-spacing="2">ECUADOR · z=0</text>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Rocket params -->
+    <div style="margin-top:4rem;">
+      <div class="section-label reveal">Rocket Parameters — Base Case</div>
+      <div class="params-grid">
+        <div class="param-card reveal"><div class="param-lbl">Initial Mass</div><div class="param-val">100<span class="u">kg</span></div></div>
+        <div class="param-card reveal"><div class="param-lbl">Propellant</div><div class="param-val">90<span class="u">kg</span></div></div>
+        <div class="param-card reveal"><div class="param-lbl">Thrust</div><div class="param-val">1500<span class="u">N</span></div></div>
+        <div class="param-card reveal"><div class="param-lbl">Spec. Impulse</div><div class="param-val">100<span class="u">s</span></div></div>
+        <div class="param-card reveal"><div class="param-lbl">Drag Coeff.</div><div class="param-val">0.5</div></div>
+        <div class="param-card reveal"><div class="param-lbl">Burn Time</div><div class="param-val">58.84<span class="u">s</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── RESULTS ───────────────────────────── -->
+  <section id="results" class="section" style="padding-top:0;">
+    <div class="section-label reveal">Simulation Results</div>
+    <h2 class="section-title reveal">Base Case —<br>T=1500 N · ISA · Coriolis ON</h2>
+    <div class="section-bar reveal"></div>
+    <div class="results-grid">
+      <div class="res-card reveal" onclick="openLightbox('preview_base.png')">
+        <img src="preview_base.png" alt="Base case — Altitude, Speed, Drag, Horizontal projection">
+        <div class="res-card-lbl">Altitude · Speed · Drag · Horizontal Projection</div>
+      </div>
+      <div class="res-card reveal" onclick="openLightbox('preview_interactive.png')">
+        <img src="preview_interactive.png" alt="Interactive preview t=0 and t=mid">
+        <div class="res-card-lbl">Interactive Preview — Time Slider</div>
+      </div>
+      <div class="res-card reveal" onclick="openLightbox('preview_encoding_test.png')">
+        <img src="preview_encoding_test.png" alt="Encoding test">
+        <div class="res-card-lbl">Rendering &amp; Encoding Test</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── ANALYSIS ──────────────────────────── -->
+  <section id="analysis" class="section">
+    <div class="section-label reveal">Parametric Analysis</div>
+    <h2 class="section-title reveal">Sensitivity Tasks</h2>
+    <div class="section-bar reveal"></div>
+
+    <div class="tabs reveal">
+      <button class="tab-btn on"  onclick="openTab(0)">Task 4.1 — Thrust</button>
+      <button class="tab-btn"     onclick="openTab(1)">Task 4.2 — Coriolis</button>
+      <button class="tab-btn"     onclick="openTab(2)">Task 4.3 — Atmosphere</button>
+      <button class="tab-btn"     onclick="openTab(3)">Task 4.4 — Propellant</button>
+    </div>
+
+    <!-- 4.1 -->
+    <div class="tab-panel on" id="t0">
+      <div>
+        <h3 style="font-family:var(--T);font-size:1.35rem;font-weight:600;margin-bottom:.8rem;">Thrust Variation</h3>
+        <p>Same propellant (90 kg) and same total impulse. Thrust is varied to analyse its influence on the maximum altitude reached.</p>
+        <div class="insight">
+          <div class="insight-lbl">KEY INSIGHT</div>
+          <p>T=3000 N reaches <strong>less altitude</strong> than T=1500 N despite the higher thrust. Faster ascent through dense air → greater drag losses. The thrust-altitude relationship is <strong>non-monotonic</strong>.</p>
+        </div>
+      </div>
+      <div>
+        <table class="data-tbl">
+          <thead><tr><th>Thrust</th><th>z_max</th><th>t_burn</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>1000 N</td><td>10.69 km</td><td>88.26 s</td><td style="color:var(--muted)">Does not reach tropopause</td></tr>
+            <tr><td class="hl">1500 N</td><td class="hl">11.28 km</td><td>58.84 s</td><td class="hl">Optimal ✓</td></tr>
+            <tr><td>3000 N</td><td>8.57 km</td><td>29.42 s</td><td style="color:var(--muted)">Excessive drag losses</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 4.2 -->
+    <div class="tab-panel" id="t1">
+      <div>
+        <h3 style="font-family:var(--T);font-size:1.35rem;font-weight:600;margin-bottom:.8rem;">Coriolis Effect</h3>
+        <p>Comparison between the real trajectory (with Earth's rotation) and the trajectory on a static planet. Launch from the equator.</p>
+        <div class="insight">
+          <div class="insight-lbl">KEY INSIGHT</div>
+          <p>The Coriolis effect deflects the rocket <strong>3.04 m westward</strong> at landing. North deviation is exactly 0. Drag is <strong>711× more significant</strong> than Coriolis (impulses: 54,696 N·s vs 77 N·s).</p>
+        </div>
+      </div>
+      <div>
+        <table class="data-tbl">
+          <thead><tr><th>Case</th><th>x (East)</th><th>y (North)</th></tr></thead>
+          <tbody>
+            <tr><td class="hl">Coriolis ON</td><td class="hl">−3.04 m</td><td>0.000 m</td></tr>
+            <tr><td>Coriolis OFF</td><td>0.000 m</td><td>0.000 m</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 4.3 -->
+    <div class="tab-panel" id="t2">
+      <div>
+        <h3 style="font-family:var(--T);font-size:1.35rem;font-weight:600;margin-bottom:.8rem;">Atmosphere Models</h3>
+        <p>Comparison between the multi-layer ISA model (standard reference) and the simplified exponential model used in rapid analyses.</p>
+        <div class="insight">
+          <div class="insight-lbl">KEY INSIGHT</div>
+          <p>Exponential model is 7.6% less dense at 0–11 km → less drag → +487 m apogee. Above 20 km it overestimates density by 32%. <strong>ISA is more realistic</strong> (error &lt;1% up to 85 km).</p>
+        </div>
+      </div>
+      <div>
+        <table class="data-tbl">
+          <thead><tr><th>Model</th><th>z_max</th><th>Accuracy</th></tr></thead>
+          <tbody>
+            <tr><td class="hl">ISA multi-layer</td><td class="hl">11.278 km</td><td class="hl">&lt;1% up to 85 km</td></tr>
+            <tr><td>Exponential</td><td>11.765 km</td><td style="color:var(--muted)">±32% above 20 km</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 4.4 -->
+    <div class="tab-panel" id="t3">
+      <div>
+        <h3 style="font-family:var(--T);font-size:1.35rem;font-weight:600;margin-bottom:.8rem;">Propellant Mass</h3>
+        <p>Fixed thrust T=1500 N. Propellant mass is varied to analyse its effect on final altitude and ascent dynamics.</p>
+        <div class="insight">
+          <div class="insight-lbl">KEY INSIGHT</div>
+          <p>More propellant → lower initial acceleration but much longer burn. <strong>Apogee altitude grows superlinearly</strong> with propellant mass.</p>
+        </div>
+      </div>
+      <div>
+        <table class="data-tbl">
+          <thead><tr><th>m_prop</th><th>a₀</th><th>t_burn</th><th>z_max</th></tr></thead>
+          <tbody>
+            <tr><td>10 kg</td><td>65.19 m/s²</td><td>6.54 s</td><td>1.48 km</td></tr>
+            <tr><td>50 kg</td><td>15.19 m/s²</td><td>32.69 s</td><td>6.48 km</td></tr>
+            <tr><td class="hl">90 kg</td><td>5.19 m/s²</td><td>58.84 s</td><td class="hl">11.28 km</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── BONUS — ISS ────────────────────────── -->
+  <div id="bonus">
+    <div class="bonus-inner">
+      <div class="section-label reveal">Bonus Exercise</div>
+      <div class="bonus-header reveal">
+        <div>
+          <h2 class="section-title">3-Stage Vehicle<br>to ISS</h2>
+          <div class="section-bar"></div>
+          <p>
+            Extension of the single-stage rocket into a <strong>three-stage vehicle</strong>
+            capable of reaching the International Space Station at 408 km altitude.
+            A <strong>leapfrog integrator (Störmer–Verlet)</strong> is used for orbital phases
+            — conserving energy and avoiding the numerical drift of the Euler method.
+          </p>
+        </div>
+        <div class="bonus-kpis">
+          <div><div class="bkpi-val">413 km</div><span class="bkpi-lbl">FINAL ALTITUDE</span></div>
+          <div><div class="bkpi-val">7665 m/s</div><span class="bkpi-lbl">ORBITAL SPEED</span></div>
+          <div><div class="bkpi-val">92.8 min</div><span class="bkpi-lbl">ORBITAL PERIOD</span></div>
+          <div><div class="bkpi-val">54 200 kg</div><span class="bkpi-lbl">INITIAL MASS</span></div>
+        </div>
+      </div>
+
+      <div class="timeline reveal">
+        <div class="tl-phase">
+          <div class="tl-dot">01</div>
+          <div>
+            <div class="tl-lbl">T+0s → T+142s</div>
+            <div class="tl-title">Stage 1 Burn — Atmospheric Ascent</div>
+            <div class="tl-detail">800 kN · Isp=290 s · Separation at 86 km altitude</div>
+          </div>
+        </div>
+        <div class="tl-phase">
+          <div class="tl-dot">02</div>
+          <div>
+            <div class="tl-lbl">T+142s → T+281s</div>
+            <div class="tl-title">Stage 2 Burn — Gravity Turn &amp; Insertion</div>
+            <div class="tl-detail">200 kN · Isp=348 s · Burnout at 171 km</div>
+          </div>
+        </div>
+        <div class="tl-phase">
+          <div class="tl-dot">03</div>
+          <div>
+            <div class="tl-lbl">T+281s → T+981s</div>
+            <div class="tl-title">Coast — Ballistic Arc (Leapfrog)</div>
+            <div class="tl-detail">Störmer–Verlet integrator · Apogee at 265 km</div>
+          </div>
+        </div>
+        <div class="tl-phase">
+          <div class="tl-dot">04</div>
+          <div>
+            <div class="tl-lbl">T+981s → T+1081s</div>
+            <div class="tl-title">Stage 3 — Circularisation</div>
+            <div class="tl-detail">2 kN · Parking orbit at 266 km · ecc ≈ 0.011</div>
+          </div>
+        </div>
+        <div class="tl-phase">
+          <div class="tl-dot">05</div>
+          <div>
+            <div class="tl-lbl">T+1081s → T+3937s</div>
+            <div class="tl-title">Hohmann Transfer → ISS</div>
+            <div class="tl-detail">Δv₁ = +41 m/s &nbsp;·&nbsp; Δv₂ = +43 m/s &nbsp;·&nbsp; Target: 408 km</div>
+          </div>
+        </div>
+        <div class="tl-phase">
+          <div class="tl-dot done" style="color:var(--cyan);border-color:var(--cyan);">✓</div>
+          <div>
+            <div class="tl-lbl" style="color:var(--cyan);">T+9504s — MISSION COMPLETE</div>
+            <div class="tl-title" style="color:var(--cyan);">ISS Rendezvous</div>
+            <div class="tl-detail">h = 413 km &nbsp;·&nbsp; v = 7665 m/s &nbsp;·&nbsp; T = 92.8 min &nbsp;·&nbsp; ecc = 0.0011</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TEAM ──────────────────────────────── -->
+  <section id="team" class="section">
+    <div class="section-label reveal">Authors</div>
+    <h2 class="section-title reveal">The Team</h2>
+    <div class="section-bar reveal"></div>
+    <div class="team-grid">
+      <div class="team-card reveal">
+        <div class="avatar"><img src="RUBEN.jpeg" alt="Rubén Praena"></div>
+        <div class="team-name">Rubén Praena</div>
+      </div>
+      <div class="team-card reveal">
+        <div class="avatar"><img src="CLAUDIA.jpeg" alt="Claudia Ros"></div>
+        <div class="team-name">Claudia Ros</div>
+      </div>
+      <div class="team-card reveal">
+        <div class="avatar"><img src="MIGUEL.jpeg" alt="Miguel Sanz"></div>
+        <div class="team-name">Miguel Sanz</div>
+      </div>
+      <div class="team-card reveal">
+        <div class="avatar"><img src="ELISHKA.jpeg" alt="Elishka Mrázek"></div>
+        <div class="team-name">Elishka Mrázek</div>
+      </div>
+      <div class="team-card reveal">
+        <div class="avatar"><img src="JOEL.jpeg" alt="Joel García"></div>
+        <div class="team-name">Joel García</div>
+      </div>
+      <div class="team-card reveal">
+        <div class="avatar"><img src="GIULIA.jpeg" alt="Giulia Latorre"></div>
+        <div class="team-name">Giulia Latorre</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── FOOTER ────────────────────────────── -->
+  <footer>
+    <div class="ft-uni">EETAC — Escola d'Enginyeria de Telecomunicació i Aeroespacial de Castelldefels</div>
+    <div class="ft-info">UNIVERSITAT POLITÈCNICA DE CATALUNYA &nbsp;·&nbsp; GRAU D'ENGINYERIA DE SATÈL·LITS</div>
+    <div class="ft-info">CLASSICAL MECHANICS &nbsp;·&nbsp; PROJECT I &nbsp;·&nbsp; 2025–2026</div>
+    <div class="ft-copy">3D Rocket Trajectory Simulation &nbsp;·&nbsp; Euler Integration &nbsp;·&nbsp; ISA Atmosphere &nbsp;·&nbsp; Coriolis Effect &nbsp;·&nbsp; 3-Stage ISS Mission</div>
+    <div class="ft-ai">
+      This website and the introductory videos were created with the assistance of artificial intelligence.
+      The scientific content, simulation, and results are the original work of the team.
+    </div>
+  </footer>
+
+</div><!-- /main -->
+
+<!-- ════════════════════════════════════════════
+     JAVASCRIPT
+════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+/* ── Skip intro if already seen this session ─────────────────────────────── */
+(function() {
+  if (!sessionStorage.getItem('introSeen')) return;
+  /* Hide all intro layers immediately */
+  ['splash','phase-countdown','phase-cockpit','phase-video','curtain']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+  /* Show main content right away */
+  window.addEventListener('DOMContentLoaded', () => {
+    const main = document.getElementById('main');
+    const nav  = document.getElementById('nav');
+    if (main) { main.style.transition = 'none'; main.classList.add('show'); }
+    if (nav)  { nav.style.transition  = 'none'; nav.classList.add('show'); }
+    document.body.style.overflowY = 'auto';
+    setTimeout(() => {
+      ['he','ht','hs','ha'].forEach(id => document.getElementById(id)?.classList.add('show'));
+      if (typeof initObservers === 'function') initObservers();
+    }, 50);
+  });
+})();
+
+/* ── Audio engine ────────────────────────────── */
+let ctx = null;
+
+function ensureCtx() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') ctx.resume();
+}
+
+function beep(freq, dur, when = 0, vol = 0.22, type = 'sine') {
+  try {
+    ensureCtx();
+    const osc = ctx.createOscillator();
+    const g   = ctx.createGain();
+    osc.connect(g); g.connect(ctx.destination);
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime + when);
+    g.gain.setValueAtTime(vol, ctx.currentTime + when);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + when + dur);
+    osc.start(ctx.currentTime + when);
+    osc.stop(ctx.currentTime + when + dur + 0.05);
+  } catch(e) {}
+}
+
+/* ambient hum */
+let humOsc = null, humGain = null;
+function startHum() {
+  try {
+    ensureCtx();
+    humOsc  = ctx.createOscillator();
+    humGain = ctx.createGain();
+    const lfo  = ctx.createOscillator();
+    const lfoG = ctx.createGain();
+    lfo.frequency.value = 0.4;
+    lfoG.gain.value = 0.012;
+    lfo.connect(lfoG); lfoG.connect(humGain.gain);
+    humOsc.connect(humGain); humGain.connect(ctx.destination);
+    humOsc.type = 'sine';
+    humOsc.frequency.value = 62;
+    humGain.gain.setValueAtTime(0, ctx.currentTime);
+    humGain.gain.linearRampToValueAtTime(0.045, ctx.currentTime + 1.8);
+    humOsc.start(); lfo.start();
+  } catch(e) {}
+}
+function stopHum(fast = false) {
+  try {
+    const t = fast ? 0.25 : 0.7;
+    humGain.gain.linearRampToValueAtTime(0, ctx.currentTime + t);
+    setTimeout(() => { try { humOsc.stop(); } catch(e){} }, (t + 0.1) * 1000);
+  } catch(e) {}
+}
+
+/* ── Countdown ───────────────────────────────── */
+const elCd   = document.getElementById('phase-countdown');
+const elNum  = document.getElementById('cd-number');
+
+let countVal = 10;
+let countTimer = null;
+let countStarted = false;
+
+function startCountdown() {
+  if (countStarted) return;
+  countStarted = true;
+  try { ensureCtx(); } catch(e) {}
+  elNum.textContent = countVal;
+  countTimer = setInterval(tick, 1000);
+}
+
+function tick() {
+  const progress = (10 - countVal) / 10;
+  beep(440 + progress * 500, 0.11, 0, 0.15 + progress * 0.22);
+
+  elNum.classList.add('flash');
+  setTimeout(() => elNum.classList.remove('flash'), 150);
+
+  if (countVal === 0) {
+    clearInterval(countTimer);
+    elNum.textContent = 'GO';
+    elNum.classList.add('go');
+    beep(880, 0.07, 0,    0.45);
+    beep(1100,0.07, 0.09, 0.45);
+    beep(1400,0.45, 0.18, 0.55);
+    setTimeout(showCockpit, 1600);
+    return;
+  }
+  countVal--;
+  elNum.textContent = countVal;
+}
+
+/* ── Cockpit ─────────────────────────────────── */
+const elCockpit = document.getElementById('phase-cockpit');
+
+function showCockpit() {
+  elCd.classList.add('out');
+  setTimeout(() => {
+    elCd.style.display = 'none';
+    elCockpit.classList.add('in');
+    startHum();
+  }, 1000);
+}
+
+/* ── Ignition ────────────────────────────────── */
+let ignited = false;
+
+function fireIgnition() {
+  if (ignited) return;
+  ignited = true;
+
+  stopHum(true);
+  ensureCtx();
+
+  /* play launch audio — fade out after 20 s */
+  const snd = new Audio('sonidolaunch.m4a');
+  snd.volume = 1;
+  snd.play().catch(() => {});
+  setTimeout(() => {
+    const fadeOut = setInterval(() => {
+      if (snd.volume > 0.07) { snd.volume = Math.max(0, snd.volume - 0.07); }
+      else { snd.pause(); clearInterval(fadeOut); }
+    }, 80);
+  }, 20000);
+
+  /* screen flash */
+  const curtain = document.getElementById('curtain');
+  curtain.style.background = 'rgba(255,180,60,0.25)';
+  curtain.style.transition = 'opacity .15s ease';
+  curtain.classList.add('show');
+  setTimeout(() => {
+    curtain.classList.remove('show');
+    curtain.style.background = '#000';
+    curtain.style.transition = 'opacity 1.2s ease';
+  }, 160);
+
+  /* shake */
+  elCockpit.classList.add('shake');
+  elCockpit.addEventListener('animationend', () => elCockpit.classList.remove('shake'), { once: true });
+
+  /* transition to video after 1.4s */
+  setTimeout(goToVideo, 1400);
+}
+
+/* ── VIDDEF video ────────────────────────────── */
+const elVideo    = document.getElementById('phase-video');
+const elViddef   = document.getElementById('viddef');
+let mainRevealed = false;
+
+function goToVideo() {
+  const curtain = document.getElementById('curtain');
+  curtain.classList.add('show');
+
+  setTimeout(() => {
+    elCockpit.style.display = 'none';
+    elVideo.classList.add('in');
+    elViddef.play().catch(() => {});
+
+    setTimeout(() => curtain.classList.remove('show'), 500);
+
+    elViddef.addEventListener('ended', revealMain, { once: true });
+    /* safety fallback */
+    setTimeout(revealMain, 150000);
+  }, 800);
+}
+
+/* ── Main reveal ─────────────────────────────── */
+function revealMain() {
+  if (mainRevealed) return;
+  mainRevealed = true;
+  sessionStorage.setItem('introSeen', '1');
+
+  const curtain = document.getElementById('curtain');
+  curtain.classList.add('show');
+
+  setTimeout(() => {
+    elVideo.style.display = 'none';
+
+    const main = document.getElementById('main');
+    const nav  = document.getElementById('nav');
+    main.classList.add('show');
+    nav.classList.add('show');
+    document.body.style.overflowY = 'auto';
+
+    setTimeout(() => curtain.classList.remove('show'), 300);
+
+    /* animate hero */
+    setTimeout(() => {
+      ['he','ht','hs','ha'].forEach(id => document.getElementById(id)?.classList.add('show'));
+    }, 500);
+
+    initObservers();
+  }, 1500);
+}
+
+/* ── Scroll observers ────────────────────────── */
+function initObservers() {
+  /* reveal */
+  new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('on'); });
+  }, { threshold: 0.12 }).observe.bind(
+    new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('on'); });
+    }, { threshold: 0.12 })
+  );
+
+  const ro = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('on'); });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach(el => ro.observe(el));
+
+  /* counters */
+  const co = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting && !e.target.dataset.done) {
+        e.target.dataset.done = '1';
+        runCounter(e.target);
+      }
+    });
+  }, { threshold: 0.5 });
+  document.querySelectorAll('.counter').forEach(el => co.observe(el));
+
+  /* nav */
+  window.addEventListener('scroll', () => {
+    document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 60);
+  }, { passive: true });
+}
+
+function runCounter(el) {
+  const target = parseFloat(el.dataset.target);
+  const dec    = parseInt(el.dataset.dec) || 0;
+  const dur    = 2200;
+  const t0     = performance.now();
+  const step   = now => {
+    const p = Math.min((now - t0) / dur, 1);
+    const e = 1 - Math.pow(1 - p, 3);
+    const v = e * target;
+    el.textContent = dec ? v.toFixed(1) : Math.floor(v).toLocaleString('es-ES');
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+/* ── Tabs ────────────────────────────────────── */
+function openTab(i) {
+  document.querySelectorAll('.tab-btn').forEach((b, j) => b.classList.toggle('on', i === j));
+  document.querySelectorAll('.tab-panel').forEach((p, j) => p.classList.toggle('on', i === j));
+}
+
+/* ── Lightbox ────────────────────────────────── */
+function openLightbox(src) {
+  const lb = document.getElementById('lightbox');
+  document.getElementById('lb-img').src = src;
+  lb.classList.add('show');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('show');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+/* ── Bootstrap ───────────────────────────────── */
+/* Splash click → unlock audio AND start countdown atomically */
+function beginExperience() {
+  ensureCtx();                          // AudioContext unlocked by this click
+  const splash = document.getElementById('splash');
+  splash.classList.add('out');
+  setTimeout(() => {
+    splash.style.display = 'none';
+    startCountdown();                   // starts with audio guaranteed live
+  }, 800);
+}
+</script>
+
+</body>
+</html>
