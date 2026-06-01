@@ -28,71 +28,86 @@
 <div class="hero">
   <div class="breadcrumb">Project I <span>›</span> Sensitivity Analysis <span>›</span> Task 4.2</div>
   <div class="hero-eyebrow">Section 4.2 — Sensitivity Analysis</div>
-  <h1 class="hero-title">Effect of <em>Coriolis Force</em> on Trajectory</h1>
-  <p class="hero-desc">What happens if we ignore Earth's rotation? We compare the trajectory with ω = 7.27×10⁻⁵ rad/s against ω = 0, isolating the Coriolis pseudo-force and quantifying its effect on the landing point.</p>
+  <h1 class="hero-title">Effect of the <em>Coriolis Force</em></h1>
+  <p class="hero-desc">Remove Earth's rotation from the model and compare the trajectory against the base case. Quantify the displacement introduced by the Coriolis pseudo-force and identify which spatial direction is most affected.</p>
   <div class="hero-tags">
     <span class="tag blue">ω = 7.27×10⁻⁵ rad/s vs ω = 0</span>
     <span class="tag green">Launch at equator</span>
-    <span class="tag">ISA · T = 1500 N</span>
+    <span class="tag">T = 1500 N · ISA</span>
   </div>
 </div>
 
 <div class="container">
 
   <div class="card">
-    <div class="card-header"><div class="card-icon blue">⚙️</div><div><div class="card-title">Physical Setup</div><div class="card-sub">Only Earth's angular velocity ω varies</div></div></div>
+    <div class="card-header"><div class="card-icon gold">📋</div><div><div class="card-title">Exercise Statement</div><div class="card-sub">Section 4.2 of the project brief</div></div></div>
+    <div class="card-body">
+      <p class="statement-text">
+        Disable the Coriolis effect by setting <strong>ω = 0</strong> and compare the resulting trajectory with the base case (ω = 7.27×10⁻⁵ rad/s). All other parameters remain identical to the base case.
+      </p>
+      <div class="statement-questions">
+        <div class="sq"><span class="sq-num">Q1</span>How does the trajectory change when the Coriolis force is removed? Compare the landing coordinates (x, y) for both cases.</div>
+        <div class="sq"><span class="sq-num">Q2</span>Which spatial direction — East-West or North-South — is most affected by the Coriolis force? Justify physically using the expression a⃗_C = −2ω⃗ × v⃗ at the equator.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div class="card-icon blue">⚙️</div><div><div class="card-title">Physical Setup</div><div class="card-sub">Only Earth angular velocity ω varies</div></div></div>
     <div class="card-body">
       <div class="params-grid">
-        <div class="param"><div class="param-label">Case A — with Coriolis</div><div class="param-val"><em>ω = 7.27×10⁻⁵</em> rad/s</div></div>
-        <div class="param"><div class="param-label">Case B — without Coriolis</div><div class="param-val"><em>ω = 0</em> (disabled)</div></div>
+        <div class="param"><div class="param-label">Case A — Coriolis ON</div><div class="param-val"><em>ω = 7.27×10⁻⁵</em> rad/s</div></div>
+        <div class="param"><div class="param-label">Case B — Coriolis OFF</div><div class="param-val"><em>ω = 0</em> (disabled)</div></div>
         <div class="param"><div class="param-label">Coriolis acceleration</div><div class="param-val">a⃗_C = −2 ω⃗ × v⃗</div></div>
-        <div class="param"><div class="param-label">At equator (ω⃗ = ω ŷ)</div><div class="param-val">a_Cx = −2ω·vz (East-West)</div></div>
-        <div class="param"><div class="param-label">Thrust / atmosphere</div><div class="param-val">T = <em>1500</em> N · ISA</div></div>
-        <div class="param"><div class="param-label">Propellant mass</div><div class="param-val"><em>90</em> kg</div></div>
+        <div class="param"><div class="param-label">At equator (ω⃗ = ω ŷ)</div><div class="param-val">a_Cx = −2ω·vz · a_Cy = 0</div></div>
+        <div class="param"><div class="param-label">Fixed thrust / atmosphere</div><div class="param-val">T = <em>1500</em> N · ISA · 90 kg prop</div></div>
+        <div class="param"><div class="param-label">Frame</div><div class="param-val">Local inertial (x=East, y=North, z=Up)</div></div>
       </div>
-      <div class="insight"><strong>Physical meaning:</strong> a rocket moving upward (v_z &gt; 0) experiences a Coriolis force pointing <strong>westward</strong> (−x). On descent (v_z &lt; 0) it deflects eastward, partially cancelling. Net result: a small westward shift at the landing site. The North-South component is zero at the equator.</div>
+      <div class="insight"><strong>Physical mechanism:</strong> a rising rocket (v_z &gt; 0) experiences a_Cx = −2ω·v_z &lt; 0 — deflected <strong>westward</strong>. On descent (v_z &lt; 0) it deflects eastward, partially cancelling. Net result: a small but measurable westward landing displacement. North-South component is exactly zero at the equator (a_Cy = 0 when ω⃗ ∥ ŷ).</div>
     </div>
   </div>
 
   <div class="card">
-    <div class="card-header"><div class="card-icon gold">🔬</div><div><div class="card-title">Analysis Questions</div><div class="card-sub">What the simulation answers</div></div></div>
+    <div class="card-header"><div class="card-icon green">📊</div><div><div class="card-title">Simulation Results</div><div class="card-sub">Landing coordinates — Coriolis ON vs OFF</div></div></div>
     <div class="card-body">
-      <div class="q-item"><div class="q-title">Q1 — How does the trajectory change?</div><div class="q-body">Coriolis deflects the rocket westward during ascent and eastward during descent. The net landing displacement and horizontal range are compared between both cases.</div></div>
-      <div class="q-item"><div class="q-title">Q2 — Which direction (East-West or North-South) is most affected?</div><div class="q-body">At the equator: a_Cx = −2ω·v_z (East-West, non-zero), a_Cy = 0 (North-South, zero). The East-West direction dominates completely.</div></div>
+      <div class="params-grid">
+        <div class="param"><div class="param-label">Coriolis ON · x (East)</div><div class="param-val"><em>−3.044</em> m (westward)</div></div>
+        <div class="param"><div class="param-label">Coriolis ON · y (North)</div><div class="param-val"><em>0.000</em> m (zero at equator)</div></div>
+        <div class="param"><div class="param-label">Coriolis OFF · x (East)</div><div class="param-val"><em>0.000</em> m</div></div>
+        <div class="param"><div class="param-label">Most affected direction</div><div class="param-val"><em>East-West</em> (x) — North-South is zero</div></div>
+      </div>
     </div>
   </div>
 
   <div class="card">
-    <div class="card-header"><div class="card-icon green">🐍</div><div><div class="card-title">4_2_Coriolis.py — Run &amp; Explore</div><div class="card-sub">numpy · matplotlib · Pyodide WebAssembly</div></div></div>
+    <div class="card-header"><div class="card-icon gold">🔬</div><div><div class="card-title">Analysis</div><div class="card-sub">Answers derived from simulation</div></div></div>
     <div class="card-body">
+      <div class="q-item"><div class="q-title">Q1 — Trajectory change</div><div class="q-body">With Coriolis ON the rocket lands 3.044 m west of the launch site (−x direction). Without Coriolis it lands exactly at the origin. Maximum altitude and flight time are virtually identical in both cases — the Coriolis force affects the horizontal trajectory but not the vertical dynamics significantly.</div></div>
+      <div class="q-item"><div class="q-title">Q2 — Direction most affected</div><div class="q-body">East-West (x) is completely dominant. At the equator: a_Cx = −2ω·vz (depends on vertical velocity, non-zero throughout flight) while a_Cy = 0 exactly (the North component of ω⃗ × v⃗ is zero when ω⃗ ∥ ŷ and the rocket moves in the x-z plane). North deviation is identically zero by symmetry.</div></div>
+    </div>
+  </div>
 
-      <div class="run-option-box">
-        <div class="run-option highlight-run">
-          <div class="run-option-title">▶ Run Simulation</div>
-          <div class="run-option-desc">Runs both cases (Coriolis ON/OFF) in your browser and renders 4 static panels: altitude, East displacement, North displacement and horizontal projection.</div>
-          <div class="run-option-badge">⏱ First run ~15 s · subsequent runs instant · no account needed</div>
-        </div>
-        <div class="run-option highlight-colab">
-          <div class="run-option-title">🔬 Open in Colab</div>
-          <div class="run-option-desc">Full interactive notebook with time slider — scrub through the trajectory to inspect position, speed and Coriolis deflection at any instant.</div>
-          <div class="run-option-badge">Requires a Google account · interactive sliders · full output</div>
-        </div>
-      </div>
-
+  <div class="card">
+    <div class="card-header"><div class="card-icon green">🐍</div><div><div class="card-title">4_2_Coriolis.py</div><div class="card-sub">Run the simulation · numpy · matplotlib</div></div></div>
+    <div class="card-body">
+      <p class="run-desc">
+        Runs both cases (Coriolis ON and OFF) and renders a <strong>2×2 static figure</strong> — altitude, East displacement, North displacement and horizontal ground projection, with one curve per case.
+      </p>
       <div class="btn-row">
         <button class="btn-run" id="runBtn" onclick="runner.run()"><span>▶</span> Run Simulation</button>
-        <a class="btn-colab" href="https://colab.research.google.com/github/gdlcjoel-lab/PROYECTOMECANICA/blob/main/Definitivos/4_2_Coriolis.ipynb" target="_blank">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm-1.25 17.292l-4.5-4.364 1.433-1.473 3.06 2.965 3.06-2.965 1.433 1.473-4.486 4.364z"/></svg>
-          Open in Colab
-        </a>
         <button class="btn-code" onclick="toggleCode()">&lt;/&gt; <span id="codeBtnTxt">View Code</span></button>
       </div>
-
+      <div class="vscode-note">
+        <span class="vscode-icon">💻</span>
+        <div class="vscode-note-body">
+          <strong>Want the full interactive version?</strong> Open <code>Definitivos/4_2_Coriolis.py</code> in VS Code and run it locally. You'll get an interactive figure with a <strong>time slider</strong> and a 2-D horizontal projection that shows the Coriolis deflection in real time.
+        </div>
+      </div>
       <div class="progress-box" id="progressBox">
         <div class="progress-steps">
           <div class="step" id="step-0"><div class="step-dot"></div>Loading Python runtime (Pyodide)…</div>
           <div class="step" id="step-1"><div class="step-dot"></div>Installing numpy + matplotlib…</div>
-          <div class="step" id="step-2"><div class="step-dot"></div>Downloading rocket_simulation.py…</div>
+          <div class="step" id="step-2"><div class="step-dot"></div>Downloading rocket_simulation.py from GitHub…</div>
           <div class="step" id="step-3"><div class="step-dot"></div>Running 2 simulations (Coriolis ON / OFF)…</div>
           <div class="step" id="step-4"><div class="step-dot"></div>Rendering 2×2 plot…</div>
         </div>
@@ -101,22 +116,23 @@
       </div>
       <div class="error-box" id="errorBox"></div>
       <div class="plot-result" id="plotResult">
-        <div class="plot-result-bar"><span>✓ Python ran in your browser — no server needed</span><button onclick="downloadPlot()">↓ Download PNG</button></div>
-        <img id="plotImg" src="" alt="Simulation plots">
+        <div class="plot-result-bar"><span>✓ Python executed in your browser via WebAssembly</span><button onclick="downloadPlot()">↓ Download PNG</button></div>
+        <img id="plotImg" src="" alt="Task 4.2 plots">
       </div>
       <div class="code-panel" id="codePanel">
-        <div class="code-panel-bar"><span>4_2_Coriolis.py</span><button onclick="copyCode()">Copy</button></div>
+        <div class="code-panel-bar"><span>Definitivos/4_2_Coriolis.py</span><button onclick="copyCode()">Copy</button></div>
         <pre><code class="language-python" id="codeBlock">"""
 Task 4.2 — Remove Coriolis Force
 Compare omega = OMEGA_EARTH (base) vs omega = 0
 """
 import numpy as np
-from rocket_simulation import simulate_rocket, compute_metrics, OMEGA_EARTH
+from rocket_simulation import simulate_rocket, compute_metrics, print_metrics, OMEGA_EARTH
 from plot_utils import plot_comparison
 
 OMEGA_CASES = [OMEGA_EARTH, 0.0]
 LABELS      = ['Coriolis ON (base)', 'Coriolis OFF (omega=0)']
 COLORS      = ['#0D2B55', '#B07D2A']
+LINESTYLES  = ['--', '-']
 
 results, metrics_list = [], []
 for omega, label in zip(OMEGA_CASES, LABELS):
@@ -124,15 +140,17 @@ for omega, label in zip(OMEGA_CASES, LABELS):
     m_obj = compute_metrics(t, r, v)
     results.append((t, r, v, drag, mass, accel))
     metrics_list.append(m_obj)
+    print_metrics(m_obj, label)
 
 m_on, m_off = metrics_list
 print(f"Coriolis ON:  x={m_on['x_land']:+.4f}m  y={m_on['y_land']:+.2e}m")
 print(f"Coriolis OFF: x={m_off['x_land']:+.4f}m  y={m_off['y_land']:+.2e}m")
 print(f"Net west deflection: {abs(m_on['x_land']):.4f} m")
+# Conclusion: East-West most affected. North-South exactly zero at equator.
 
-# Interactive 4-panel plot (altitude, East, North, horizontal projection)
+# Interactive 4-panel plot with time slider
 plot_comparison(panels=[...], labels=LABELS, colors=COLORS,
-                suptitle='Task 4.2 — Effect of Coriolis Force')
+                suptitle='Task 4.2 — Effect of Coriolis Force on Trajectory')
 </code></pre>
       </div>
     </div>
@@ -153,22 +171,16 @@ plot_comparison(panels=[...], labels=LABELS, colors=COLORS,
 <script>
 const SIM_CODE = `
 from rocket_simulation import OMEGA_EARTH
-OMEGA_CASES = [OMEGA_EARTH, 0.0]
-LABELS = ['Coriolis ON (base)', 'Coriolis OFF (omega=0)']
-COLORS = ['#0D2B55', '#B07D2A']
-results = []
+OMEGA_CASES=[OMEGA_EARTH,0.0]; LABELS=['Coriolis ON (base)','Coriolis OFF (omega=0)']; COLORS=['#0D2B55','#B07D2A']
+results=[]
 for omega in OMEGA_CASES:
-    t, r, v, drag, mass, accel = simulate_rocket(omega=omega)
-    results.append((t, r, v, drag, mass, accel))
-t0, r0 = results[0][0], results[0][1]
-t1, r1 = results[1][0], results[1][1]
+    t,r,v,drag,mass,accel=simulate_rocket(omega=omega); results.append((t,r,v,drag,mass,accel))
+t0,r0=results[0][0],results[0][1]; t1,r1=results[1][0],results[1][1]
 `;
-
 const PLOT_CODE = `
-fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-fig.suptitle('Task 4.2 — Coriolis Force ON vs OFF', fontsize=13, fontweight='bold', color='#0D2B55')
-fig.patch.set_facecolor('white')
-axes = axes.flatten()
+fig,axes=plt.subplots(2,2,figsize=(12,8))
+fig.suptitle('Task 4.2 — Coriolis Force ON vs OFF',fontsize=13,fontweight='bold',color='#0D2B55')
+fig.patch.set_facecolor('white'); axes=axes.flatten()
 for ax,(x0,y0,x1,y1,ttl,xl,yl) in zip(axes,[
     (t0,r0[:,2]/1000,t1,r1[:,2]/1000,'Altitude vs Time','Time [s]','Altitude [km]'),
     (t0,r0[:,0],t1,r1[:,0],'East Displacement vs Time','Time [s]','East x [m]'),
@@ -177,17 +189,11 @@ for ax,(x0,y0,x1,y1,ttl,xl,yl) in zip(axes,[
 ]):
     ax.plot(x0,y0,color='#0D2B55',linestyle='--',lw=2,label=LABELS[0])
     ax.plot(x1,y1,color='#B07D2A',linestyle='-',lw=2,label=LABELS[1])
-    ax.set_title(ttl,fontsize=10,fontweight='bold',color='#0D2B55')
-    ax.set_xlabel(xl,fontsize=9); ax.set_ylabel(yl,fontsize=9)
+    ax.set_title(ttl,fontsize=10,fontweight='bold',color='#0D2B55'); ax.set_xlabel(xl,fontsize=9); ax.set_ylabel(yl,fontsize=9)
     ax.legend(fontsize=8); ax.grid(True,color='#D0D8E4',lw=0.7)
-axes[3].set_aspect('equal','datalim')
-plt.tight_layout()
+axes[3].set_aspect('equal','datalim'); plt.tight_layout()
 `;
-
-const runner = new PyodideRunner({
-  steps: ['Loading Pyodide','Installing packages','Downloading code','Running simulations','Rendering plot'],
-  simCode: SIM_CODE, plotCode: PLOT_CODE,
-});
+const runner = new PyodideRunner({ steps:['Loading Pyodide','Installing packages','Downloading code','Running simulations','Rendering plot'], simCode:SIM_CODE, plotCode:PLOT_CODE });
 window.addEventListener('DOMContentLoaded', () => runner.init());
 </script>
 </body>

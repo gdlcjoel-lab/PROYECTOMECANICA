@@ -164,6 +164,28 @@ nav {
 .code-panel code { font-size: .78rem; line-height: 1.6; }
 .hljs { background: transparent !important; }
 
+/* ── STATEMENT CARD ── */
+.statement-text { font-size: .92rem; line-height: 1.75; color: #CBD5E1; }
+.statement-text strong { color: var(--text); font-weight: 500; }
+.statement-questions { margin-top: 1rem; display: flex; flex-direction: column; gap: .5rem; }
+.sq { display: flex; gap: .75rem; align-items: flex-start; font-size: .85rem; color: #94A3B8; line-height: 1.6; }
+.sq-num { font-family: var(--font-mono); font-size: .72rem; color: var(--accent); background: rgba(74,158,255,.1); border: 1px solid rgba(74,158,255,.25); border-radius: 4px; padding: .1rem .45rem; flex-shrink: 0; margin-top: .15rem; }
+
+/* ── RUN SECTION (simplified) ── */
+.run-desc { margin-bottom: 1.1rem; font-size: .85rem; line-height: 1.7; color: #94A3B8; }
+.run-desc strong { color: var(--text); }
+
+.vscode-note {
+  margin-top: 1.1rem; display: flex; align-items: flex-start; gap: .9rem;
+  padding: .9rem 1.1rem;
+  background: rgba(255,255,255,.03); border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.vscode-icon { font-size: 1.3rem; flex-shrink: 0; margin-top: .05rem; }
+.vscode-note-body { font-size: .82rem; line-height: 1.65; color: #94A3B8; }
+.vscode-note-body strong { color: var(--text); font-weight: 500; }
+.vscode-note-body code { font-family: var(--font-mono); font-size: .78rem; color: var(--accent); background: rgba(74,158,255,.08); padding: .1rem .35rem; border-radius: 4px; }
+
 /* ── PAGE NAV ── */
 .page-nav { display: flex; gap: 1rem; }
 .page-nav-btn { flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.3rem; display: flex; align-items: center; gap: .7rem; text-decoration: none; color: var(--text); transition: border-color .2s; }

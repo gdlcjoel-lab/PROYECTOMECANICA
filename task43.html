@@ -29,9 +29,9 @@
   <div class="breadcrumb">Project I <span>›</span> Sensitivity Analysis <span>›</span> Task 4.3</div>
   <div class="hero-eyebrow">Section 4.3 — Sensitivity Analysis</div>
   <h1 class="hero-title"><em>Atmosphere Model</em> Comparison</h1>
-  <p class="hero-desc">How much does the atmospheric density model matter? We compare the ISA multi-layer model against a simplified single-exponential approximation ρ(z) = ρ₀·exp(−z/H), analysing differences in altitude, drag and speed.</p>
+  <p class="hero-desc">Replace the ISA multi-layer model with a simplified single-exponential atmosphere and evaluate how the density approximation affects the simulated trajectory, drag evolution and maximum altitude.</p>
   <div class="hero-tags">
-    <span class="tag blue">ISA vs Exponential ρ(z)</span>
+    <span class="tag blue">ISA vs ρ(z)=ρ₀·exp(−z/H)</span>
     <span class="tag green">H = 8500 m · ρ₀ = 1.225 kg/m³</span>
     <span class="tag">T = 1500 N · 90 kg propellant</span>
   </div>
@@ -40,57 +40,78 @@
 <div class="container">
 
   <div class="card">
+    <div class="card-header"><div class="card-icon gold">📋</div><div><div class="card-title">Exercise Statement</div><div class="card-sub">Section 4.3 of the project brief</div></div></div>
+    <div class="card-body">
+      <p class="statement-text">
+        Replace the ISA atmospheric density model with a simplified single-exponential model:
+        <strong>ρ(z) = ρ₀ · exp(−z / H)</strong>, where ρ₀ = 1.225 kg/m³ and H = 8500 m.
+        Keep all other parameters identical to the base case.
+      </p>
+      <div class="statement-questions">
+        <div class="sq"><span class="sq-num">Q1</span>Compare the maximum altitudes reached under the ISA model and the exponential model. Explain the difference in terms of density profiles.</div>
+        <div class="sq"><span class="sq-num">Q2</span>How does the aerodynamic drag evolve differently over time for each model? Identify the altitude range where the models diverge most.</div>
+        <div class="sq"><span class="sq-num">Q3</span>Which model is more physically realistic? Justify with reference to the atmospheric layer structure.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-header"><div class="card-icon blue">⚙️</div><div><div class="card-title">Physical Setup</div><div class="card-sub">Only the atmospheric density model varies</div></div></div>
     <div class="card-body">
       <div class="params-grid">
-        <div class="param"><div class="param-label">Model A — ISA</div><div class="param-val"><em>Multi-layer</em> (7 layers up to 85 km)</div></div>
-        <div class="param"><div class="param-label">Model B — Exponential</div><div class="param-val"><em>ρ(z) = ρ₀·exp(−z/H)</em></div></div>
-        <div class="param"><div class="param-label">Sea-level density ρ₀</div><div class="param-val"><em>1.225</em> kg/m³ (both models agree)</div></div>
-        <div class="param"><div class="param-label">Scale height H</div><div class="param-val"><em>8500</em> m (exponential only)</div></div>
-        <div class="param"><div class="param-label">ISA tropopause kink</div><div class="param-val">11 km — isothermal above 11 km</div></div>
-        <div class="param"><div class="param-label">Fixed parameters</div><div class="param-val">T = 1500 N · m_prop = 90 kg</div></div>
+        <div class="param"><div class="param-label">Model A — ISA</div><div class="param-val"><em>Multi-layer</em> (7 layers, 0–85 km)</div></div>
+        <div class="param"><div class="param-label">Model B — Exponential</div><div class="param-val"><em>ρ(z) = 1.225·exp(−z/8500)</em> kg/m³</div></div>
+        <div class="param"><div class="param-label">Both agree at sea level</div><div class="param-val">ρ(0) = <em>1.225</em> kg/m³</div></div>
+        <div class="param"><div class="param-label">ISA tropopause kink at 11 km</div><div class="param-val">Lapse rate 0 → isothermal 216.65 K</div></div>
+        <div class="param"><div class="param-label">Exponential below ~7 km</div><div class="param-val"><em>7.6 %</em> less dense than ISA</div></div>
+        <div class="param"><div class="param-label">Exponential above 20 km</div><div class="param-val"><em>32 %</em> more dense than ISA (unrealistic)</div></div>
       </div>
-      <div class="insight"><strong>Key difference:</strong> ISA has a density kink at the tropopause (11 km) — the lapse rate changes from −6.5 K/km to 0 K/km, causing a slower density drop. The exponential model decreases monotonically everywhere, <strong>underestimating density above ~7 km</strong> and overestimating it below ~5 km.</div>
+      <div class="insight"><strong>Key difference:</strong> the ISA tropopause at 11 km creates a density kink — lapse rate drops to zero so ρ(z) decreases more slowly above 11 km. The exponential is monotonically decreasing everywhere: it <em>underestimates</em> density in the 7–20 km range, producing less drag and a higher apogee (+0.49 km).</div>
     </div>
   </div>
 
   <div class="card">
-    <div class="card-header"><div class="card-icon gold">🔬</div><div><div class="card-title">Analysis Questions</div><div class="card-sub">What the simulation answers</div></div></div>
+    <div class="card-header"><div class="card-icon green">📊</div><div><div class="card-title">Simulation Results</div><div class="card-sub">ISA vs Exponential atmosphere</div></div></div>
     <div class="card-body">
-      <div class="q-item"><div class="q-title">Q1 — How do maximum altitudes compare?</div><div class="q-body">The exponential model predicts lower density above ~7 km, so the rocket experiences less drag and reaches a slightly higher apogee compared to ISA.</div></div>
-      <div class="q-item"><div class="q-title">Q2 — How does drag evolve differently for each model?</div><div class="q-body">ISA produces higher drag in the 7–15 km range (denser stratosphere). The exponential model decays smoothly with no kink. This difference is visible in the drag vs time plot.</div></div>
-      <div class="q-item"><div class="q-title">Q3 — Which model is more physically realistic?</div><div class="q-body">ISA — it captures the temperature inversion at the tropopause and has been validated against measured atmospheric profiles to &lt;1% accuracy up to 85 km. The exponential is a useful analytical approximation only.</div></div>
+      <div class="params-grid">
+        <div class="param"><div class="param-label">ISA · max altitude</div><div class="param-val"><em>11.278</em> km</div></div>
+        <div class="param"><div class="param-label">Exponential · max altitude</div><div class="param-val"><em>11.765</em> km (+0.487 km)</div></div>
+        <div class="param"><div class="param-label">Density at 11 km — ISA</div><div class="param-val"><em>0.364</em> kg/m³</div></div>
+        <div class="param"><div class="param-label">Density at 11 km — Exponential</div><div class="param-val"><em>0.335</em> kg/m³ (8% less)</div></div>
+      </div>
     </div>
   </div>
 
   <div class="card">
-    <div class="card-header"><div class="card-icon green">🐍</div><div><div class="card-title">4_3_Drag.py — Run &amp; Explore</div><div class="card-sub">numpy · matplotlib · Pyodide WebAssembly</div></div></div>
+    <div class="card-header"><div class="card-icon gold">🔬</div><div><div class="card-title">Analysis</div><div class="card-sub">Answers derived from simulation</div></div></div>
     <div class="card-body">
-      <div class="run-option-box">
-        <div class="run-option highlight-run">
-          <div class="run-option-title">▶ Run Simulation</div>
-          <div class="run-option-desc">Runs both atmosphere models in your browser and displays 4 panels: altitude, drag force, speed and air density experienced along the trajectory.</div>
-          <div class="run-option-badge">⏱ First run ~15 s · subsequent runs instant · no account needed</div>
-        </div>
-        <div class="run-option highlight-colab">
-          <div class="run-option-title">🔬 Open in Colab</div>
-          <div class="run-option-desc">Full interactive version with time slider. Also prints a density comparison table at key altitudes (0–30 km) showing ISA vs exponential values.</div>
-          <div class="run-option-badge">Requires a Google account · interactive sliders · full output</div>
-        </div>
-      </div>
+      <div class="q-item"><div class="q-title">Q1 — Maximum altitude comparison</div><div class="q-body">ISA: 11.278 km · Exponential: 11.765 km (Δ = +0.487 km). The exponential model predicts ~8% lower density in the 5–15 km range, reducing drag during the powered phase and early coast, allowing the rocket to reach a higher apogee.</div></div>
+      <div class="q-item"><div class="q-title">Q2 — Drag evolution</div><div class="q-body">ISA shows a smoother drag decrease with a subtle slope change at the tropopause (11 km). The exponential model produces consistently lower drag in the 7–20 km range — visible as a gap in the drag vs time plot from roughly t = 30–70 s. Both converge at sea level (ρ₀ identical) and at very high altitude (both → 0).</div></div>
+      <div class="q-item"><div class="q-title">Q3 — Physical realism</div><div class="q-body">ISA is far more realistic. It captures the temperature inversion at the tropopause, the isothermal lower stratosphere, and the warming in the mesosphere — all validated against balloon and satellite measurements to &lt;1% up to 85 km. The exponential model is a convenient analytical approximation valid only in the lower troposphere.</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div class="card-icon green">🐍</div><div><div class="card-title">4_3_Drag.py</div><div class="card-sub">Run the simulation · numpy · matplotlib</div></div></div>
+    <div class="card-body">
+      <p class="run-desc">
+        Runs both atmosphere models and renders a <strong>2×2 static figure</strong> — altitude, drag force, speed and air density experienced along the trajectory, with one curve per model.
+      </p>
       <div class="btn-row">
         <button class="btn-run" id="runBtn" onclick="runner.run()"><span>▶</span> Run Simulation</button>
-        <a class="btn-colab" href="https://colab.research.google.com/github/gdlcjoel-lab/PROYECTOMECANICA/blob/main/Definitivos/4_3_Drag.ipynb" target="_blank">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm-1.25 17.292l-4.5-4.364 1.433-1.473 3.06 2.965 3.06-2.965 1.433 1.473-4.486 4.364z"/></svg>
-          Open in Colab
-        </a>
         <button class="btn-code" onclick="toggleCode()">&lt;/&gt; <span id="codeBtnTxt">View Code</span></button>
+      </div>
+      <div class="vscode-note">
+        <span class="vscode-icon">💻</span>
+        <div class="vscode-note-body">
+          <strong>Want the full interactive version?</strong> Open <code>Definitivos/4_3_Drag.py</code> in VS Code and run it locally. The interactive figure includes a density comparison table printed to console and a time slider to track drag and density simultaneously.
+        </div>
       </div>
       <div class="progress-box" id="progressBox">
         <div class="progress-steps">
           <div class="step" id="step-0"><div class="step-dot"></div>Loading Python runtime (Pyodide)…</div>
           <div class="step" id="step-1"><div class="step-dot"></div>Installing numpy + matplotlib…</div>
-          <div class="step" id="step-2"><div class="step-dot"></div>Downloading rocket_simulation.py…</div>
+          <div class="step" id="step-2"><div class="step-dot"></div>Downloading rocket_simulation.py from GitHub…</div>
           <div class="step" id="step-3"><div class="step-dot"></div>Running 2 simulations (ISA / Exponential)…</div>
           <div class="step" id="step-4"><div class="step-dot"></div>Rendering 2×2 plot…</div>
         </div>
@@ -99,23 +120,24 @@
       </div>
       <div class="error-box" id="errorBox"></div>
       <div class="plot-result" id="plotResult">
-        <div class="plot-result-bar"><span>✓ Python ran in your browser — no server needed</span><button onclick="downloadPlot()">↓ Download PNG</button></div>
-        <img id="plotImg" src="" alt="Simulation plots">
+        <div class="plot-result-bar"><span>✓ Python executed in your browser via WebAssembly</span><button onclick="downloadPlot()">↓ Download PNG</button></div>
+        <img id="plotImg" src="" alt="Task 4.3 plots">
       </div>
       <div class="code-panel" id="codePanel">
-        <div class="code-panel-bar"><span>4_3_Drag.py</span><button onclick="copyCode()">Copy</button></div>
+        <div class="code-panel-bar"><span>Definitivos/4_3_Drag.py</span><button onclick="copyCode()">Copy</button></div>
         <pre><code class="language-python" id="codeBlock">"""
 Task 4.3 — Atmosphere Model Comparison
 ISA multi-layer vs single-exponential rho(z) = rho0 * exp(-z/H)
 """
 import numpy as np
-from rocket_simulation import (simulate_rocket, compute_metrics,
+from rocket_simulation import (simulate_rocket, compute_metrics, print_metrics,
     density_isa, density_exponential, RHO0, H_SCALE)
 from plot_utils import plot_comparison
 
 DENSITY_CASES = [density_isa, density_exponential]
 LABELS        = ['ISA (multi-layer)', 'Exponential ρ₀·exp(−z/H)']
 COLORS        = ['#0D2B55', '#B07D2A']
+LINESTYLES    = ['--', '-']
 
 results, metrics_list = [], []
 for density_func, label in zip(DENSITY_CASES, LABELS):
@@ -128,7 +150,12 @@ print(f"ISA   z_max = {m_isa['z_max']/1000:.3f} km")
 print(f"Exp   z_max = {m_exp['z_max']/1000:.3f} km")
 print(f"Delta      = {(m_exp['z_max']-m_isa['z_max'])/1000:+.3f} km")
 
-# Interactive plot: altitude, drag, speed, air density experienced
+# Density comparison table
+for alt_km in [0, 2, 5, 8, 11, 15, 20]:
+    ri = density_isa(alt_km*1000); re = density_exponential(alt_km*1000)
+    print(f"{alt_km:2d}km  ISA={ri:.3e}  Exp={re:.3e}  ratio={re/ri:.3f}")
+
+# Interactive plot: altitude, drag, speed, air density along trajectory
 plot_comparison(panels=[...], labels=LABELS, colors=COLORS,
                 suptitle='Task 4.3 — ISA vs Exponential Atmosphere')
 </code></pre>
@@ -151,42 +178,27 @@ plot_comparison(panels=[...], labels=LABELS, colors=COLORS,
 <script>
 const SIM_CODE = `
 from rocket_simulation import density_isa, density_exponential
-LABELS = ['ISA (multi-layer)', 'Exponential']
-COLORS = ['#0D2B55', '#B07D2A']
-results = []
-for density_func in [density_isa, density_exponential]:
-    t, r, v, drag, mass, accel = simulate_rocket(density_func=density_func)
-    results.append((t, r, v, drag, mass, accel))
-t0,r0,v0,d0 = results[0][0],results[0][1],results[0][2],results[0][3]
-t1,r1,v1,d1 = results[1][0],results[1][1],results[1][2],results[1][3]
-rho_isa_arr = np.array([density_isa(max(float(z),0)) for z in r0[:,2]])
-rho_exp_arr = np.array([density_exponential(max(float(z),0)) for z in r1[:,2]])
+LABELS=['ISA (multi-layer)','Exponential']; COLORS=['#0D2B55','#B07D2A']
+results=[]
+for density_func in [density_isa,density_exponential]:
+    t,r,v,drag,mass,accel=simulate_rocket(density_func=density_func); results.append((t,r,v,drag,mass,accel))
+t0,r0,v0,d0=results[0][0],results[0][1],results[0][2],results[0][3]
+t1,r1,v1,d1=results[1][0],results[1][1],results[1][2],results[1][3]
+rho_isa_arr=np.array([density_isa(max(float(z),0)) for z in r0[:,2]])
+rho_exp_arr=np.array([density_exponential(max(float(z),0)) for z in r1[:,2]])
 `;
-
 const PLOT_CODE = `
-fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-fig.suptitle('Task 4.3 — ISA vs Exponential Atmosphere', fontsize=13, fontweight='bold', color='#0D2B55')
-fig.patch.set_facecolor('white')
-axes = axes.flatten()
-data = [
-    (t0,r0[:,2]/1000,t1,r1[:,2]/1000,'Altitude vs Time','Time [s]','Altitude [km]'),
-    (t0,d0,t1,d1,'Drag Force vs Time','Time [s]','Drag [N]'),
-    (t0,np.linalg.norm(v0,axis=1),t1,np.linalg.norm(v1,axis=1),'Speed vs Time','Time [s]','Speed [m/s]'),
-    (t0,rho_isa_arr,t1,rho_exp_arr,'Air Density Experienced','Time [s]','ρ [kg/m³]'),
-]
+fig,axes=plt.subplots(2,2,figsize=(12,8))
+fig.suptitle('Task 4.3 — ISA vs Exponential Atmosphere',fontsize=13,fontweight='bold',color='#0D2B55')
+fig.patch.set_facecolor('white'); axes=axes.flatten()
+data=[(t0,r0[:,2]/1000,t1,r1[:,2]/1000,'Altitude vs Time','Time [s]','Altitude [km]'),(t0,d0,t1,d1,'Drag Force vs Time','Time [s]','Drag [N]'),(t0,np.linalg.norm(v0,axis=1),t1,np.linalg.norm(v1,axis=1),'Speed vs Time','Time [s]','Speed [m/s]'),(t0,rho_isa_arr,t1,rho_exp_arr,'Air Density Experienced','Time [s]','ρ [kg/m³]')]
 for ax,(x0,y0,x1,y1,ttl,xl,yl) in zip(axes,data):
-    ax.plot(x0,y0,color='#0D2B55',linestyle='--',lw=2,label=LABELS[0])
-    ax.plot(x1,y1,color='#B07D2A',linestyle='-',lw=2,label=LABELS[1])
-    ax.set_title(ttl,fontsize=10,fontweight='bold',color='#0D2B55')
-    ax.set_xlabel(xl,fontsize=9); ax.set_ylabel(yl,fontsize=9)
+    ax.plot(x0,y0,color='#0D2B55',linestyle='--',lw=2,label=LABELS[0]); ax.plot(x1,y1,color='#B07D2A',linestyle='-',lw=2,label=LABELS[1])
+    ax.set_title(ttl,fontsize=10,fontweight='bold',color='#0D2B55'); ax.set_xlabel(xl,fontsize=9); ax.set_ylabel(yl,fontsize=9)
     ax.legend(fontsize=8); ax.grid(True,color='#D0D8E4',lw=0.7)
 plt.tight_layout()
 `;
-
-const runner = new PyodideRunner({
-  steps: ['Loading Pyodide','Installing packages','Downloading code','Running simulations','Rendering plot'],
-  simCode: SIM_CODE, plotCode: PLOT_CODE,
-});
+const runner = new PyodideRunner({ steps:['Loading Pyodide','Installing packages','Downloading code','Running simulations','Rendering plot'], simCode:SIM_CODE, plotCode:PLOT_CODE });
 window.addEventListener('DOMContentLoaded', () => runner.init());
 </script>
 </body>
