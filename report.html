@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Project Report · Rocket Sim</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:     #050A14; --bg2: #090F1E; --card: #0C1527;
+    --border: rgba(255,255,255,.07); --accent: #4A9EFF;
+    --green:  #22D3A0; --gold: #F59E0B; --muted: #64748B; --text: #E2E8F0;
+    --font-head:'Space Grotesk',sans-serif;
+    --font-mono:'JetBrains Mono',monospace;
+    --sidebar-w: 240px; --header-h: 54px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter',sans-serif;
+         display: flex; flex-direction: column; }
+
+  /* ── HEADER ── */
+  header {
+    height: var(--header-h); flex-shrink: 0;
+    background: rgba(5,10,20,.95); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 1rem; padding: 0 1.5rem;
+    z-index: 50;
+  }
+  .back-link {
+    display: flex; align-items: center; gap: .4rem; color: var(--accent);
+    text-decoration: none; font-family: var(--font-head); font-size: .82rem;
+    font-weight: 500; border: 1px solid rgba(74,158,255,.25); border-radius: 6px;
+    padding: .28rem .75rem; transition: all .2s; white-space: nowrap;
+  }
+  .back-link:hover { background: rgba(74,158,255,.1); }
+  .header-title { font-family: var(--font-head); font-size: .92rem; font-weight: 600; }
+  .header-sub   { font-size: .75rem; color: var(--muted); margin-left: .3rem; }
+  .dl-btn {
+    margin-left: auto; display: flex; align-items: center; gap: .4rem;
+    background: rgba(34,211,160,.12); border: 1px solid rgba(34,211,160,.3);
+    border-radius: 6px; padding: .28rem .85rem; color: var(--green);
+    font-family: var(--font-head); font-size: .78rem; font-weight: 500;
+    text-decoration: none; transition: all .2s;
+  }
+  .dl-btn:hover { background: rgba(34,211,160,.22); }
+
+  /* ── LAYOUT ── */
+  .layout { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── SIDEBAR ── */
+  nav.sidebar {
+    width: var(--sidebar-w); flex-shrink: 0;
+    background: #080E1C; border-right: 1px solid var(--border);
+    overflow-y: auto; display: flex; flex-direction: column;
+    scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.1) transparent;
+  }
+  .sidebar-heading {
+    padding: 1rem 1rem .4rem;
+    font-family: var(--font-mono); font-size: .65rem; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .nav-btn {
+    display: flex; align-items: flex-start; gap: .6rem;
+    padding: .55rem 1rem; cursor: pointer; border: none; background: none;
+    border-left: 2px solid transparent; text-align: left; width: 100%;
+    transition: all .15s;
+  }
+  .nav-btn:hover { background: rgba(255,255,255,.04); border-left-color: rgba(74,158,255,.3); }
+  .nav-btn.active { background: rgba(74,158,255,.1); border-left-color: var(--accent); }
+  .nav-btn-num {
+    font-family: var(--font-mono); font-size: .68rem; color: var(--accent);
+    background: rgba(74,158,255,.1); border: 1px solid rgba(74,158,255,.2);
+    border-radius: 3px; padding: .05rem .35rem; flex-shrink: 0; margin-top: .1rem;
+  }
+  .nav-btn-text { font-family: var(--font-head); font-size: .78rem; color: var(--text); line-height: 1.35; }
+  .nav-btn.active .nav-btn-text { color: var(--accent); }
+  .nav-btn-sub  { font-size: .68rem; color: var(--muted); margin-top: .1rem; }
+  .sidebar-divider { height: 1px; background: var(--border); margin: .3rem .8rem; }
+
+  /* ── PDF VIEWER ── */
+  .viewer { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+  .viewer-bar {
+    padding: .5rem 1.2rem; background: rgba(9,15,30,.8);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: .75rem; flex-shrink: 0;
+  }
+  .viewer-bar-label {
+    font-family: var(--font-head); font-size: .82rem; font-weight: 600;
+  }
+  .viewer-bar-pages {
+    font-family: var(--font-mono); font-size: .72rem; color: var(--muted);
+    background: rgba(255,255,255,.05); border: 1px solid var(--border);
+    border-radius: 4px; padding: .15rem .5rem;
+  }
+  .open-tab-btn {
+    margin-left: auto; display: flex; align-items: center; gap: .35rem;
+    font-family: var(--font-head); font-size: .75rem; color: var(--muted);
+    background: none; border: 1px solid var(--border); border-radius: 5px;
+    padding: .22rem .65rem; cursor: pointer; text-decoration: none; transition: all .15s;
+  }
+  .open-tab-btn:hover { color: var(--text); border-color: rgba(255,255,255,.2); }
+
+  #pdfFrame {
+    flex: 1; width: 100%; border: none; background: #fff;
+    display: block;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="back-link" href="index.html">← Project Home</a>
+  <span class="header-title">Project Report</span>
+  <span class="header-sub">— Classical Mechanics · EETAC, UPC</span>
+  <a class="dl-btn" href="MecSat_project2.pdf" download="MecSat_Project_Report.pdf">
+    ↓ Download PDF
+  </a>
+</header>
+
+<div class="layout">
+
+  <nav class="sidebar">
+    <div class="sidebar-heading">Table of Contents</div>
+
+    <button class="nav-btn active" onclick="jump(1,'cover','Cover')" id="btn-cover">
+      <span class="nav-btn-num">—</span>
+      <div><div class="nav-btn-text">Cover &amp; Index</div></div>
+    </button>
+
+    <div class="sidebar-divider"></div>
+
+    <button class="nav-btn" onclick="jump(3,'context','1–2 · Context &amp; Physical Model')" id="btn-context">
+      <span class="nav-btn-num">1–2</span>
+      <div>
+        <div class="nav-btn-text">Context &amp; Physical Model</div>
+        <div class="nav-btn-sub">Forces · Euler · Parameters</div>
+      </div>
+    </button>
+
+    <button class="nav-btn" onclick="jump(4,'calc','3.1 · Calculations')" id="btn-calc">
+      <span class="nav-btn-num">3.1</span>
+      <div>
+        <div class="nav-btn-text">Calculations</div>
+        <div class="nav-btn-sub">Analytical + Euler tables</div>
+      </div>
+    </button>
+
+    <button class="nav-btn" onclick="jump(15,'analysis','3.2 · Analysis')" id="btn-analysis">
+      <span class="nav-btn-num">3.2</span>
+      <div>
+        <div class="nav-btn-text">Analysis</div>
+        <div class="nav-btn-sub">Plots · Questions d–h</div>
+      </div>
+    </button>
+
+    <div class="sidebar-divider"></div>
+
+    <button class="nav-btn" onclick="jump(19,'t41','4.1 · Thrust Variation')" id="btn-t41">
+      <span class="nav-btn-num">4.1</span>
+      <div>
+        <div class="nav-btn-text">Task 1 — Thrust</div>
+        <div class="nav-btn-sub">T = 1000 / 1500 / 3000 N</div>
+      </div>
+    </button>
+
+    <button class="nav-btn" onclick="jump(22,'t42','4.2 · Coriolis Force')" id="btn-t42">
+      <span class="nav-btn-num">4.2</span>
+      <div>
+        <div class="nav-btn-text">Task 2 — Coriolis</div>
+        <div class="nav-btn-sub">ω = 0 vs ω_Earth</div>
+      </div>
+    </button>
+
+    <button class="nav-btn" onclick="jump(24,'t43','4.3 · Simplified Atmosphere')" id="btn-t43">
+      <span class="nav-btn-num">4.3</span>
+      <div>
+        <div class="nav-btn-text">Task 3 — Atmosphere</div>
+        <div class="nav-btn-sub">ISA vs Exponential</div>
+      </div>
+    </button>
+
+    <button class="nav-btn" onclick="jump(26,'t44','4.4 · Mass Variation')" id="btn-t44">
+      <span class="nav-btn-num">4.4</span>
+      <div>
+        <div class="nav-btn-text">Task 4 — Propellant Mass</div>
+        <div class="nav-btn-sub">10 / 50 / 90 kg</div>
+      </div>
+    </button>
+
+    <div class="sidebar-divider"></div>
+
+    <button class="nav-btn" onclick="jump(30,'bonus','5 · Bonus — ISS Mission')" id="btn-bonus">
+      <span class="nav-btn-num">5</span>
+      <div>
+        <div class="nav-btn-text">Bonus — ISS Mission</div>
+        <div class="nav-btn-sub">3-stage · ECI · Hohmann</div>
+      </div>
+    </button>
+
+    <div class="sidebar-divider"></div>
+
+    <button class="nav-btn" onclick="jump(38,'appendix','6 · Appendix')" id="btn-appendix">
+      <span class="nav-btn-num">6</span>
+      <div>
+        <div class="nav-btn-text">Appendix</div>
+        <div class="nav-btn-sub">Python source — air_density.py</div>
+      </div>
+    </button>
+  </nav>
+
+  <div class="viewer">
+    <div class="viewer-bar">
+      <span class="viewer-bar-label" id="viewerLabel">Cover &amp; Index</span>
+      <span class="viewer-bar-pages" id="viewerPages">p. 1</span>
+      <a class="open-tab-btn" id="openTabBtn" href="MecSat_project2.pdf" target="_blank">
+        ↗ Open in new tab
+      </a>
+    </div>
+    <iframe id="pdfFrame" src="MecSat_project2.pdf#page=1&toolbar=1&navpanes=0"></iframe>
+  </div>
+</div>
+
+<script>
+const SECTIONS = {
+  cover:    { page: 1,  label: 'Cover & Index',              pages: 'p. 1–2' },
+  context:  { page: 3,  label: '1–2 · Context & Physical Model', pages: 'p. 3' },
+  calc:     { page: 4,  label: '3.1 · Calculations',         pages: 'p. 4–14' },
+  analysis: { page: 15, label: '3.2 · Analysis',             pages: 'p. 15–18' },
+  t41:      { page: 19, label: '4.1 · Thrust Variation',     pages: 'p. 19–21' },
+  t42:      { page: 22, label: '4.2 · Coriolis Force',       pages: 'p. 22–24' },
+  t43:      { page: 24, label: '4.3 · Simplified Atmosphere',pages: 'p. 24–26' },
+  t44:      { page: 26, label: '4.4 · Mass Variation',       pages: 'p. 26–29' },
+  bonus:    { page: 30, label: '5 · Bonus — ISS Mission',    pages: 'p. 30–37' },
+  appendix: { page: 38, label: '6 · Appendix',               pages: 'p. 38–40' },
+};
+
+let currentSection = 'cover';
+
+function jump(page, sectionKey, label) {
+  const frame = document.getElementById('pdfFrame');
+  const sec = SECTIONS[sectionKey] || { label: label, pages: 'p. ' + page };
+
+  frame.src = `MecSat_project2.pdf#page=${page}&toolbar=1&navpanes=0`;
+  document.getElementById('viewerLabel').textContent = sec.label;
+  document.getElementById('viewerPages').textContent = sec.pages;
+  document.getElementById('openTabBtn').href = `MecSat_project2.pdf#page=${page}`;
+
+  // Update active button
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('btn-' + sectionKey);
+  if (btn) btn.classList.add('active');
+
+  currentSection = sectionKey;
+
+  // Handle hash navigation from external links
+  history.replaceState(null, '', '#' + sectionKey);
+}
+
+// Support direct URL hash navigation (e.g. report.html#t41)
+window.addEventListener('DOMContentLoaded', () => {
+  const hash = location.hash.replace('#', '');
+  if (hash && SECTIONS[hash]) {
+    const sec = SECTIONS[hash];
+    jump(sec.page, hash, sec.label);
+  }
+});
+</script>
+</body>
+</html>
