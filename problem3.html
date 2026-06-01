@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Section 3 — Base Case · Rocket Sim</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<link rel="stylesheet" href="exercise.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script src="pyodide-runner.js"></script>
+</head>
+<body>
+<nav>
+  <a class="nav-back" href="index.html">← Project Home</a>
+  <div class="nav-logo">ROCKET<span>SIM</span></div>
+  <div class="nav-links">
+    <a href="problem3.html" class="active">Section 3</a>
+    <a href="task41.html">Task 4.1</a>
+    <a href="task42.html">Task 4.2</a>
+    <a href="task43.html">Task 4.3</a>
+    <a href="task44.html">Task 4.4</a>
+    <a href="bonus.html">Bonus ISS</a>
+    <a href="code.html">Source Code</a>
+  </div>
+</nav>
+
+<div class="hero">
+  <div class="breadcrumb">Project <span>›</span> Section 3 — Base Case</div>
+  <div class="hero-eyebrow">Section 3 — Problem Statement</div>
+  <h1 class="hero-title"><em>Base Case</em> Simulation</h1>
+  <p class="hero-desc">Complete 3D trajectory simulation of the reference rocket using Euler integration with ISA atmosphere and Coriolis force. Includes the full analytical derivation (Section 3.1) and numerical analysis with plots and discussion questions (Section 3.2).</p>
+  <div class="hero-tags">
+    <span class="tag blue">T = 1500 N · Isp = 100 s</span>
+    <span class="tag green">ISA · Coriolis ON</span>
+    <span class="tag">m₀ = 100 kg · Δt = 0.1 s</span>
+    <span class="tag">Sections 3.1 + 3.2</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- STATEMENT 3.1 -->
+  <div class="card">
+    <div class="card-header"><div class="card-icon gold">📋</div><div><div class="card-title">Exercise Statement — Section 3.1</div><div class="card-sub">Calculations</div></div></div>
+    <div class="card-body">
+      <p class="statement-text">
+        Consider a rocket characterised by the following parameters: <strong>m₀ = 100 kg</strong> (initial mass), <strong>mₚ = 10 kg</strong> (payload mass), <strong>T = 1500 N</strong> (thrust), <strong>Isp = 100 s</strong> (specific impulse), <strong>Cd = 0.5</strong> (drag coefficient), <strong>A_ref = 0.1 m²</strong> (cross-sectional area). The rocket is launched vertically from the Earth's surface. Use Euler's method to determine:
+      </p>
+      <div class="statement-questions">
+        <div class="sq"><span class="sq-num">a</span>The velocity v⃗ and position r⃗ of the rocket as a function of time. Derive the analytical expression for m(t) and v_z(t) during the burn phase (Tsiolkovsky equation with gravitational loss).</div>
+        <div class="sq"><span class="sq-num">b</span>The maximum height reached by the rocket — both analytically (no drag) and numerically (Euler + ISA).</div>
+        <div class="sq"><span class="sq-num">c</span>The time of flight t_F and the location of the landing point — compare analytical (no drag) vs numerical results.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATEMENT 3.2 -->
+  <div class="card">
+    <div class="card-header"><div class="card-icon gold">📋</div><div><div class="card-title">Exercise Statement — Section 3.2</div><div class="card-sub">Analysis</div></div></div>
+    <div class="card-body">
+      <p class="statement-text">Using the simulation outputs, plot and answer the following questions:</p>
+      <div class="statement-questions">
+        <div class="sq"><span class="sq-num">plot</span>Altitude vs time · Horizontal projection (y vs x) · Velocity vs time · Drag force vs time.</div>
+        <div class="sq"><span class="sq-num">d</span>Why does aerodynamic drag decrease rapidly with altitude?</div>
+        <div class="sq"><span class="sq-num">e</span>What happens to drag at very high altitude?</div>
+        <div class="sq"><span class="sq-num">f</span>What is the range and the deviation of the rocket?</div>
+        <div class="sq"><span class="sq-num">g</span>Which effect is more important: the Coriolis effect or aerodynamic friction (drag)?</div>
+        <div class="sq"><span class="sq-num">h</span>What is the difference in maximum height and range between this case and a single-stage rocket with exhaust velocity u = 1000 m/s and mass ratio N = 10?</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHYSICAL SETUP -->
+  <div class="card">
+    <div class="card-header"><div class="card-icon blue">⚙️</div><div><div class="card-title">Physical Setup — Base Case</div><div class="card-sub">Reference parameters for the entire project</div></div></div>
+    <div class="card-body">
+      <div class="params-grid">
+        <div class="param"><div class="param-label">Initial mass m₀</div><div class="param-val"><em>100</em> kg (90 kg propellant + 10 kg payload)</div></div>
+        <div class="param"><div class="param-label">Thrust T</div><div class="param-val"><em>1500</em> N</div></div>
+        <div class="param"><div class="param-label">Specific impulse Isp</div><div class="param-val"><em>100</em> s → u = g₀·Isp = 980.7 m/s</div></div>
+        <div class="param"><div class="param-label">Drag coefficient Cd · A_ref</div><div class="param-val"><em>0.5</em> · <em>0.1</em> m²</div></div>
+        <div class="param"><div class="param-label">Earth angular velocity ω</div><div class="param-val"><em>7.27×10⁻⁵</em> rad/s (Coriolis ON)</div></div>
+        <div class="param"><div class="param-label">Atmosphere model</div><div class="param-val">ISA multi-layer (7 layers, 0–85 km)</div></div>
+        <div class="param"><div class="param-label">Mass flow rate ṁ = T/(g₀·Isp)</div><div class="param-val"><em>1.5296</em> kg/s</div></div>
+        <div class="param"><div class="param-label">Burnout time t_burn = m_prop/ṁ</div><div class="param-val"><em>58.84</em> s</div></div>
+      </div>
+      <div class="insight"><strong>Two models used:</strong> the <strong>analytical</strong> solution neglects drag and Coriolis → predicts much larger burnout velocity (1681 m/s) and maximum altitude (~170 km). The <strong>Euler numerical</strong> simulation includes drag and ISA density → produces massive energy losses, reducing z_max to ~11.3 km.</div>
+    </div>
+  </div>
+
+  <!-- KEY RESULTS -->
+  <div class="card">
+    <div class="card-header"><div class="card-icon green">📊</div><div><div class="card-title">Key Results</div><div class="card-sub">Analytical vs Euler numerical</div></div></div>
+    <div class="card-body">
+      <div class="params-grid">
+        <div class="param"><div class="param-label">z_max · Analytical (no drag)</div><div class="param-val"><em>170.0</em> km</div></div>
+        <div class="param"><div class="param-label">z_max · Euler + ISA</div><div class="param-val"><em>11.28</em> km</div></div>
+        <div class="param"><div class="param-label">t_F · Analytical (no drag)</div><div class="param-val"><em>416.5</em> s</div></div>
+        <div class="param"><div class="param-label">t_F · Euler + ISA</div><div class="param-val"><em>227.7</em> s</div></div>
+        <div class="param"><div class="param-label">x_land · Analytical (no drag)</div><div class="param-val"><em>−6138.9</em> m (westward)</div></div>
+        <div class="param"><div class="param-label">x_land · Euler + ISA</div><div class="param-val"><em>−3.044</em> m (westward)</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ANALYSIS ANSWERS -->
+  <div class="card">
+    <div class="card-header"><div class="card-icon gold">🔬</div><div><div class="card-title">Analysis — Questions d to h</div><div class="card-sub">Section 3.2 answers</div></div></div>
+    <div class="card-body">
+      <div class="q-item">
+        <div class="q-title">d — Why does drag decrease rapidly with altitude?</div>
+        <div class="q-body">Aerodynamic drag F_D = ½·Cd·A·ρ(z)·|v|² is directly proportional to air density ρ(z). As the rocket ascends, the ISA density drops dramatically — at 11 km it is only ~30% of sea-level value (0.364 vs 1.225 kg/m³). This rapid density decrease causes drag to plummet with altitude even though the rocket is still moving fast.</div>
+      </div>
+      <div class="q-item">
+        <div class="q-title">e — What happens to drag at very high altitude?</div>
+        <div class="q-body">Beyond ~85 km (exosphere) air density drops to near-zero (&lt;10⁻⁵ kg/m³), so drag effectively vanishes. The rocket enters free-flight: only gravity acts on it. In this model, since our rocket stays below 12 km, drag still approaches zero at apogee because both ρ and |v| are simultaneously small there.</div>
+      </div>
+      <div class="q-item">
+        <div class="q-title">f — What is the range and deviation of the rocket?</div>
+        <div class="q-body">Numerical (Euler + ISA): landing at x = −3.044 m (westward), y = 0.000 m → range = 3.044 m. Analytical (no drag): x = −6138.9 m, y = 0 m → range = 6138.9 m. The deviation is purely East-West (Coriolis); North-South displacement is exactly zero at the equator.</div>
+      </div>
+      <div class="q-item">
+        <div class="q-title">g — Coriolis effect vs aerodynamic friction: which matters more?</div>
+        <div class="q-body">Drag is far more important. It reduces z_max from ~170 km (analytical) to just 11.3 km — a factor of 15. The Coriolis effect only produces a 3 m lateral drift. Drag impulse ≈ 54,696 N·s vs Coriolis impulse ≈ 77 N·s — a ratio of ~711×.</div>
+      </div>
+      <div class="q-item">
+        <div class="q-title">h — Comparison with u = 1000 m/s, N = 10</div>
+        <div class="q-body">Our rocket already has N = m₀/mₚ = 10 and u = g₀·Isp = 980.7 m/s. The hypothetical rocket with u = 1000 m/s and N = 10 is nearly identical — Δv difference = +44.5 m/s (+1.97%). Both reach practically the same altitude; the marginal gain is a fraction of a kilometre. The westward range would also be slightly larger.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PDF INLINE -->
+  <div class="card">
+    <div class="card-header"><div class="card-icon blue">📄</div><div><div class="card-title">Project Report — Sections 3.1 &amp; 3.2</div><div class="card-sub">Pages 4–18 of the full report</div></div></div>
+    <div class="card-body pdf-card-body">
+      <div class="pdf-viewer-bar">
+        <span>MecSat_project2.pdf</span>
+        <span class="pdf-pages">p. 4–18</span>
+        <a href="report.html#calc" target="_blank">Open full report ↗</a>
+      </div>
+      <iframe class="pdf-inline" src="MecSat_project2.pdf#page=4&toolbar=1&navpanes=0"></iframe>
+    </div>
+  </div>
+
+  <!-- PYTHON CODE -->
+  <div class="card">
+    <div class="card-header"><div class="card-icon green">🐍</div><div><div class="card-title">proj_3_2.py</div><div class="card-sub">Run the base case simulation · numpy · matplotlib</div></div></div>
+    <div class="card-body">
+      <p class="run-desc">
+        Runs the base case with default parameters and renders a <strong>2×2 static figure</strong> — altitude, horizontal projection (y vs x), speed and aerodynamic drag vs time. This is the reference simulation used throughout the project.
+      </p>
+      <div class="btn-row">
+        <button class="btn-run" id="runBtn" onclick="runner.run()"><span>▶</span> Run Simulation</button>
+        <button class="btn-code" onclick="toggleCode()">&lt;/&gt; <span id="codeBtnTxt">View Code</span></button>
+      </div>
+      <div class="vscode-note">
+        <span class="vscode-icon">💻</span>
+        <div class="vscode-note-body">
+          <strong>Want the full interactive version?</strong> Open <code>Definitivos/proj_3_2.py</code> in VS Code and run it locally. You'll get the interactive 4-panel figure with time slider, click-to-jump on any panel, and floating value labels — the same figure used to produce the plots in the PDF.
+        </div>
+      </div>
+      <div class="progress-box" id="progressBox">
+        <div class="progress-steps">
+          <div class="step" id="step-0"><div class="step-dot"></div>Loading Python runtime (Pyodide)…</div>
+          <div class="step" id="step-1"><div class="step-dot"></div>Installing numpy + matplotlib…</div>
+          <div class="step" id="step-2"><div class="step-dot"></div>Downloading rocket_simulation.py from GitHub…</div>
+          <div class="step" id="step-3"><div class="step-dot"></div>Running base case simulation (T=1500N, ISA, Coriolis ON)…</div>
+          <div class="step" id="step-4"><div class="step-dot"></div>Rendering 2×2 plot…</div>
+        </div>
+        <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-time" id="progressTime"></div>
+      </div>
+      <div class="error-box" id="errorBox"></div>
+      <div class="plot-result" id="plotResult">
+        <div class="plot-result-bar"><span>✓ Python executed in your browser via WebAssembly</span><button onclick="downloadPlot()">↓ Download PNG</button></div>
+        <img id="plotImg" src="" alt="Base case simulation plots">
+      </div>
+      <div class="code-panel" id="codePanel">
+        <div class="code-panel-bar"><span>Definitivos/proj_3_2.py</span><button onclick="copyCode()">Copy</button></div>
+        <pre><code class="language-python" id="codeBlock">"""
+Section 3.2 — Base Case Analysis
+Plots: altitude | horizontal projection | speed | drag vs time
+Questions d–h answered in console output
+"""
+import numpy as np
+from rocket_simulation import (
+    simulate_rocket, compute_metrics, print_metrics, plot_base_results,
+    T0, ISP, M0, MP, G0, OMEGA_EARTH, density_isa,
+)
+
+# Run base case with default parameters
+t, r, v, drag, mass, accel = simulate_rocket()
+metrics = compute_metrics(t, r, v)
+print_metrics(metrics, "BASE CASE  (T=1500 N, ISA, Coriolis ON)")
+
+# Q d — drag decreases because rho(z) drops with altitude
+# Q e — at very high altitude rho→0, so drag→0 (free-flight)
+# Q f — range and deviation
+print(f"Landing x (East) : {metrics['x_land']:+.4f} m")
+print(f"Landing y (North): {metrics['y_land']:+.4f} m")
+print(f"Horizontal range : {metrics['range']:.4f} m")
+
+# Q g — Coriolis vs drag (impulse comparison)
+_trapz = getattr(np, 'trapezoid', np.trapz)
+drag_impulse = float(_trapz(drag, t))
+coriolis_est = float(2 * OMEGA_EARTH * _trapz(mass * np.abs(v[:, 2]), t))
+print(f"Drag impulse     : {drag_impulse:.1f} N·s")
+print(f"Coriolis impulse : {coriolis_est:.3f} N·s")
+print(f"Ratio drag/Coril : {drag_impulse/coriolis_est:.0f}×")
+
+# Q h — comparison with u=1000 m/s, N=10
+u_current = ISP * G0          # 980.7 m/s
+dv_current = u_current * np.log(M0 / MP)
+dv_comp    = 1000.0 * np.log(10.0)
+print(f"Our rocket  Δv = {dv_current:.2f} m/s  (u={u_current:.1f} m/s)")
+print(f"Comparison  Δv = {dv_comp:.2f} m/s  (u=1000 m/s)")
+print(f"Difference       {dv_comp - dv_current:+.2f} m/s ({100*(dv_comp-dv_current)/dv_current:.2f}%)")
+
+# Interactive 4-panel figure
+plot_base_results(t, r, v, drag,
+                  title="Section 3.2 — Base Case (T=1500N, ISA, Coriolis ON)")
+</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-nav">
+    <a class="page-nav-btn" href="index.html">
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 15l-5-5 5-5"/></svg>
+      <div><div class="pn-label">Back to</div><div class="pn-title">Project Overview</div></div>
+    </a>
+    <a class="page-nav-btn next" href="task41.html">
+      <div><div class="pn-label">Next</div><div class="pn-title">Task 4.1 — Thrust Variation</div></div>
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 5l5 5-5 5"/></svg>
+    </a>
+  </div>
+</div>
+
+<script>
+const SIM_CODE = `
+t, r, v, drag, mass, accel = simulate_rocket()
+LABEL = 'Base Case — T=1500 N, ISA, Coriolis ON'
+`;
+
+const PLOT_CODE = `
+fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+fig.suptitle('Section 3.2 — Base Case Simulation', fontsize=13, fontweight='bold', color='#0D2B55')
+fig.patch.set_facecolor('white')
+axes = axes.flatten()
+speed = np.linalg.norm(v, axis=1)
+
+axes[0].plot(t, r[:,2]/1000, color='#0D2B55', lw=2)
+axes[0].set_title('Altitude vs Time', fontsize=10, fontweight='bold', color='#0D2B55')
+axes[0].set_xlabel('Time [s]', fontsize=9); axes[0].set_ylabel('Altitude [km]', fontsize=9)
+
+axes[1].plot(r[:,0], r[:,1], color='#0D2B55', lw=2)
+axes[1].set_title('Horizontal Projection (y vs x)', fontsize=10, fontweight='bold', color='#0D2B55')
+axes[1].set_xlabel('East x [m]', fontsize=9); axes[1].set_ylabel('North y [m]', fontsize=9)
+axes[1].set_aspect('equal', adjustable='datalim')
+
+axes[2].plot(t, speed, color='#0D2B55', lw=2)
+axes[2].set_title('Speed vs Time', fontsize=10, fontweight='bold', color='#0D2B55')
+axes[2].set_xlabel('Time [s]', fontsize=9); axes[2].set_ylabel('Speed [m/s]', fontsize=9)
+
+axes[3].plot(t, drag, color='#0D2B55', lw=2)
+axes[3].set_title('Aerodynamic Drag vs Time', fontsize=10, fontweight='bold', color='#0D2B55')
+axes[3].set_xlabel('Time [s]', fontsize=9); axes[3].set_ylabel('Drag [N]', fontsize=9)
+
+for ax in axes:
+    ax.grid(True, color='#D0D8E4', lw=0.7)
+plt.tight_layout()
+`;
+
+const runner = new PyodideRunner({
+  steps: ['Loading Pyodide', 'Installing packages', 'Downloading code', 'Running base case simulation', 'Rendering plot'],
+  simCode: SIM_CODE,
+  plotCode: PLOT_CODE,
+});
+window.addEventListener('DOMContentLoaded', () => runner.init());
+</script>
+</body>
+</html>
