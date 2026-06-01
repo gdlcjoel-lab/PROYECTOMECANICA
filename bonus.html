@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Bonus — ISS Mission · Rocket Sim</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<link rel="stylesheet" href="exercise.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script src="pyodide-runner.js"></script>
+</head>
+<body>
+<nav>
+  <a class="nav-back" href="index.html">← Project Home</a>
+  <div class="nav-logo">ROCKET<span>SIM</span></div>
+  <div class="nav-links">
+    <a href="task41.html">Task 4.1</a>
+    <a href="task42.html">Task 4.2</a>
+    <a href="task43.html">Task 4.3</a>
+    <a href="task44.html">Task 4.4</a>
+    <a href="bonus.html" class="active">Bonus ISS</a>
+    <a href="code.html">Source Code</a>
+  </div>
+</nav>
+
+<div class="hero">
+  <div class="breadcrumb">Project I <span>›</span> Bonus Exercise</div>
+  <div class="hero-eyebrow">Bonus — ECI 3-Stage Simulation</div>
+  <h1 class="hero-title"><em>3-Stage Rocket</em> to the ISS</h1>
+  <p class="hero-desc">A Soyuz-type 3-stage rocket launches from the equator and reaches the International Space Station at 408 km orbit. Full ECI simulation including gravity turn, staging, Hohmann transfer and circularisation burn.</p>
+  <div class="hero-tags">
+    <span class="tag blue">Target: ISS · 408 km LEO</span>
+    <span class="tag green">ECI frame · Leapfrog + Euler</span>
+    <span class="tag gold">54 200 kg total · 500 kg payload</span>
+    <span class="tag">Hohmann transfer</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="card">
+    <div class="card-header"><div class="card-icon purple">🛸</div><div><div class="card-title">Mission Architecture</div><div class="card-sub">Soyuz-type, scaled for a 500 kg payload</div></div></div>
+    <div class="card-body">
+      <div class="params-grid">
+        <div class="param"><div class="param-label">Stage 1 — booster (LOX/Kero)</div><div class="param-val">T = <em>800 kN</em> · Isp = 290 s · 40 t prop</div></div>
+        <div class="param"><div class="param-label">Stage 2 — upper stage (LH₂/LOX)</div><div class="param-val">T = <em>200 kN</em> · Isp = 348 s · 8 t prop</div></div>
+        <div class="param"><div class="param-label">Stage 3 — manoeuvre / RCS</div><div class="param-val">T = <em>2 kN</em> · Isp = 300 s · 500 kg prop</div></div>
+        <div class="param"><div class="param-label">Total initial mass</div><div class="param-val"><em>54 200</em> kg</div></div>
+        <div class="param"><div class="param-label">Drag cutoff (Kármán line)</div><div class="param-val"><em>100 km</em> — no drag above</div></div>
+        <div class="param"><div class="param-label">Gravity turn profile</div><div class="param-val">3 km → 80 km (0° → 90°)</div></div>
+      </div>
+      <div class="insight"><strong>Simplifications:</strong> equatorial launch (no inclination change), pre-programmed gravity turn (no GNC feedback), instantaneous staging, single Aero cross-section throughout. ISS rendezvous = velocity matching at 408 km — proximity ops not simulated.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div class="card-icon gold">🔬</div><div><div class="card-title">Mission Phases</div><div class="card-sub">6 distinct phases from launch to docking</div></div></div>
+    <div class="card-body">
+      <div class="q-item"><div class="q-title">① Stage 1 burn — atmospheric ascent</div><div class="q-body">800 kN thrust with gravity turn from 3 km to 80 km. Stage 1 jettisoned after ~57 s at ~40 km altitude.</div></div>
+      <div class="q-item"><div class="q-title">② Stage 2 burn — orbital insertion</div><div class="q-body">200 kN continues the gravity turn into vacuum. Burnout at ~150 km — Stage 2 jettisoned.</div></div>
+      <div class="q-item"><div class="q-title">③ Coast — suborbital arc to apogee</div><div class="q-body">Free ballistic coast (leapfrog integrator) to the first apogee. Stage 3 ignites here.</div></div>
+      <div class="q-item"><div class="q-title">④ Circularisation + Hohmann burn 1</div><div class="q-body">Stage 3 circularises the parking orbit, then applies a prograde Δv to raise apogee to 408 km (Hohmann perigee burn).</div></div>
+      <div class="q-item"><div class="q-title">⑤ Hohmann transfer coast</div><div class="q-body">Coast on the transfer ellipse until reaching 408 km altitude (apogee of transfer orbit).</div></div>
+      <div class="q-item"><div class="q-title">⑥ Circularisation at ISS + Rendezvous</div><div class="q-body">Second prograde Δv circularises at ISS altitude. One full orbital period completed → docking successful.</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div class="card-icon green">🐍</div><div><div class="card-title">bonus_multistage.py — Run &amp; Explore</div><div class="card-sub">numpy · matplotlib · Pyodide WebAssembly · ~30–45 s</div></div></div>
+    <div class="card-body">
+
+      <div class="run-option-box">
+        <div class="run-option highlight-run">
+          <div class="run-option-title">▶ Run Simulation</div>
+          <div class="run-option-desc">Runs the full 3-stage ECI mission in your browser. Renders a 4-panel timeline (altitude, speed, mass, phase portrait) and the 2-D orbital view in the ECI x-y plane. Each phase is colour-coded.</div>
+          <div class="run-option-badge">⏱ ~30–45 s first run (larger simulation) · no account needed</div>
+        </div>
+        <div class="run-option highlight-colab">
+          <div class="run-option-title">🔬 Open in Colab</div>
+          <div class="run-option-desc">Full interactive notebook — includes a time slider across the entire mission (launch to docking), mission summary table with all event timestamps, and Tsiolkovsky Δv budget breakdown.</div>
+          <div class="run-option-badge">Requires a Google account · interactive slider · full mission summary</div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-run" id="runBtn" onclick="runner.run()"><span>▶</span> Run Simulation</button>
+        <a class="btn-colab" href="https://colab.research.google.com/github/gdlcjoel-lab/PROYECTOMECANICA/blob/main/Definitivos/bonus_ISS_mission.ipynb" target="_blank">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm-1.25 17.292l-4.5-4.364 1.433-1.473 3.06 2.965 3.06-2.965 1.433 1.473-4.486 4.364z"/></svg>
+          Open in Colab
+        </a>
+        <button class="btn-code" onclick="toggleCode()">&lt;/&gt; <span id="codeBtnTxt">View Code</span></button>
+      </div>
+
+      <div class="progress-box" id="progressBox">
+        <div class="progress-steps">
+          <div class="step" id="step-0"><div class="step-dot"></div>Loading Python runtime (Pyodide)…</div>
+          <div class="step" id="step-1"><div class="step-dot"></div>Installing numpy + matplotlib…</div>
+          <div class="step" id="step-2"><div class="step-dot"></div>Downloading simulation engine…</div>
+          <div class="step" id="step-3"><div class="step-dot"></div>Running 3-stage ISS mission (may take ~30 s)…</div>
+          <div class="step" id="step-4"><div class="step-dot"></div>Rendering timeline + orbital view…</div>
+        </div>
+        <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-time" id="progressTime"></div>
+      </div>
+      <div class="error-box" id="errorBox"></div>
+      <div class="plot-result" id="plotResult">
+        <div class="plot-result-bar"><span>✓ Python ran in your browser — no server needed</span><button onclick="downloadPlot()">↓ Download PNG</button></div>
+        <img id="plotImg" src="" alt="Mission plots">
+      </div>
+      <div class="code-panel" id="codePanel">
+        <div class="code-panel-bar"><span>bonus_multistage.py (entry: bonus_analysis.py)</span><button onclick="copyCode()">Copy</button></div>
+        <pre><code class="language-python" id="codeBlock">"""
+bonus_analysis.py — Entry point for the 3-stage ISS mission.
+Imports the physics engine from bonus_multistage.py and
+the plotting functions from bonus_plot.py.
+"""
+from bonus_multistage import simulate_multistage, print_mission_summary
+from bonus_plot import plot_mission, plot_orbit
+import matplotlib.pyplot as plt
+
+# Run full ECI simulation
+# dt_atm=0.1s in atmosphere, dt_space=5s in vacuum
+data = simulate_multistage(dt_atm=0.1, dt_space=5.0)
+
+# Print mission summary (events, orbital elements, Δv budget)
+print_mission_summary(data)
+
+# Figure 1: 4-panel timeline (altitude, speed, mass, phase portrait)
+fig1 = plot_mission(data)
+
+# Figure 2: 2-D ECI orbital view (x-y equatorial plane)
+fig2 = plot_orbit(data)
+
+plt.show()
+</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-nav">
+    <a class="page-nav-btn" href="task44.html">
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 15l-5-5 5-5"/></svg>
+      <div><div class="pn-label">Previous</div><div class="pn-title">Task 4.4 — Propellant Mass</div></div>
+    </a>
+    <a class="page-nav-btn next" href="index.html">
+      <div><div class="pn-label">Back to</div><div class="pn-title">Project Overview</div></div>
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 5l5 5-5 5"/></svg>
+    </a>
+  </div>
+</div>
+
+<script>
+const SIM_CODE = `
+from bonus_multistage import (simulate_multistage, R_EARTH, H_ISS,
+    PHASE_COLORS_DEF, PHASE_NAMES)
+
+PHASE_COLORS = {1:'#5B9BD5',2:'#2A6496',3:'#0D2B55',4:'#B07D2A',5:'#8E44AD',6:'#27AE60'}
+PHASE_NAMES_L = {1:'Stage 1',2:'Stage 2',3:'Coast',4:'Circularisation',5:'Hohmann',6:'ISS orbit'}
+
+print('Running 3-stage mission simulation...')
+data = simulate_multistage(dt_atm=0.1, dt_space=5.0)
+t = data['t']; h = data['h']; speed = data['speed']
+m = data['m']; phase = data['phase']; r = data['r']
+print('Simulation complete.')
+for ev_t, ev_label in data['events']:
+    print(f't={ev_t:.0f}s | {ev_label}')
+`;
+
+const PLOT_CODE = `
+import matplotlib.patches as mpatches
+
+PHASE_COLORS = {1:'#5B9BD5',2:'#2A6496',3:'#0D2B55',4:'#B07D2A',5:'#8E44AD',6:'#27AE60'}
+PHASE_NAMES_L = {1:'Stage 1',2:'Stage 2',3:'Coast',4:'Circularisation',5:'Hohmann',6:'ISS orbit'}
+
+fig, axes = plt.subplots(2, 2, figsize=(13, 9))
+fig.suptitle('Bonus — 3-Stage Rocket Mission to ISS', fontsize=13, fontweight='bold', color='#0D2B55')
+fig.patch.set_facecolor('white')
+axes = axes.flatten()
+
+for p in np.unique(phase):
+    mask = phase == p; col = PHASE_COLORS.get(int(p),'#999')
+    axes[0].plot(t[mask],h[mask],'.',color=col,markersize=1.2)
+    axes[1].plot(t[mask],speed[mask],'.',color=col,markersize=1.2)
+    axes[2].plot(t[mask],m[mask],'.',color=col,markersize=1.2)
+    axes[3].plot(speed[mask],h[mask],'.',color=col,markersize=1.2,label=PHASE_NAMES_L.get(int(p),''))
+
+for ev_t,_ in data['events']:
+    for ax in axes[:3]: ax.axvline(ev_t,color='#aaa',lw=0.6,linestyle=':')
+
+axes[0].axhline(408,color='#27AE60',lw=1.2,linestyle='--',label='ISS (408 km)')
+axes[0].legend(fontsize=8)
+
+for ax,(ttl,xl,yl) in zip(axes[:3],[
+    ('Altitude vs Time','Time [s]','Altitude [km]'),
+    ('Speed vs Time','Time [s]','Speed [m/s]'),
+    ('Mass vs Time','Time [s]','Mass [kg]'),
+]):
+    ax.set_title(ttl,fontsize=10,fontweight='bold',color='#0D2B55')
+    ax.set_xlabel(xl,fontsize=9); ax.set_ylabel(yl,fontsize=9); ax.grid(True,color='#D0D8E4',lw=0.7)
+
+axes[3].set_title('Phase Portrait',fontsize=10,fontweight='bold',color='#0D2B55')
+axes[3].set_xlabel('Speed [m/s]',fontsize=9); axes[3].set_ylabel('Altitude [km]',fontsize=9)
+axes[3].grid(True,color='#D0D8E4',lw=0.7); axes[3].legend(fontsize=7,loc='upper left')
+
+legend_patches = [mpatches.Patch(color=PHASE_COLORS[p],label=PHASE_NAMES_L[p]) for p in sorted(PHASE_COLORS)]
+fig.legend(handles=legend_patches,loc='lower center',ncol=6,fontsize=8,bbox_to_anchor=(0.5,0))
+plt.tight_layout(rect=[0,0.055,1,1])
+`;
+
+const runner = new PyodideRunner({
+  steps: ['Loading Pyodide','Installing packages','Downloading engine','Running ISS mission','Rendering plots'],
+  simCode: SIM_CODE,
+  plotCode: PLOT_CODE,
+  extraFetch: ['bonus_multistage.py'],
+});
+window.addEventListener('DOMContentLoaded', () => runner.init());
+</script>
+</body>
+</html>
