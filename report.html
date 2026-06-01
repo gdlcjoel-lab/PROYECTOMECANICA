@@ -7,35 +7,32 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:     #050A14; --bg2: #090F1E; --card: #0C1527;
+    --bg:     #050A14; --card: #0C1527; --card2: #0A1220;
     --border: rgba(255,255,255,.07); --accent: #4A9EFF;
     --green:  #22D3A0; --gold: #F59E0B; --muted: #64748B; --text: #E2E8F0;
     --font-head:'Space Grotesk',sans-serif;
     --font-mono:'JetBrains Mono',monospace;
-    --sidebar-w: 240px; --header-h: 54px;
+    --sidebar-w: 250px; --header-h: 54px;
   }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; overflow: hidden; }
-  body { background: var(--bg); color: var(--text); font-family: 'Inter',sans-serif;
-         display: flex; flex-direction: column; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter',sans-serif; display: flex; flex-direction: column; }
 
-  /* ── HEADER ── */
+  /* HEADER */
   header {
     height: var(--header-h); flex-shrink: 0;
     background: rgba(5,10,20,.95); backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: 1rem; padding: 0 1.5rem;
-    z-index: 50;
+    display: flex; align-items: center; gap: 1rem; padding: 0 1.5rem; z-index: 50;
   }
   .back-link {
     display: flex; align-items: center; gap: .4rem; color: var(--accent);
-    text-decoration: none; font-family: var(--font-head); font-size: .82rem;
-    font-weight: 500; border: 1px solid rgba(74,158,255,.25); border-radius: 6px;
-    padding: .28rem .75rem; transition: all .2s; white-space: nowrap;
+    text-decoration: none; font-family: var(--font-head); font-size: .82rem; font-weight: 500;
+    border: 1px solid rgba(74,158,255,.25); border-radius: 6px; padding: .28rem .75rem; transition: all .2s; white-space: nowrap;
   }
   .back-link:hover { background: rgba(74,158,255,.1); }
   .header-title { font-family: var(--font-head); font-size: .92rem; font-weight: 600; }
-  .header-sub   { font-size: .75rem; color: var(--muted); margin-left: .3rem; }
+  .header-sub { font-size: .75rem; color: var(--muted); margin-left: .3rem; }
   .dl-btn {
     margin-left: auto; display: flex; align-items: center; gap: .4rem;
     background: rgba(34,211,160,.12); border: 1px solid rgba(34,211,160,.3);
@@ -45,10 +42,10 @@
   }
   .dl-btn:hover { background: rgba(34,211,160,.22); }
 
-  /* ── LAYOUT ── */
+  /* LAYOUT */
   .layout { display: flex; flex: 1; overflow: hidden; }
 
-  /* ── SIDEBAR ── */
+  /* SIDEBAR */
   nav.sidebar {
     width: var(--sidebar-w); flex-shrink: 0;
     background: #080E1C; border-right: 1px solid var(--border);
@@ -63,8 +60,7 @@
   .nav-btn {
     display: flex; align-items: flex-start; gap: .6rem;
     padding: .55rem 1rem; cursor: pointer; border: none; background: none;
-    border-left: 2px solid transparent; text-align: left; width: 100%;
-    transition: all .15s;
+    border-left: 2px solid transparent; text-align: left; width: 100%; transition: all .15s;
   }
   .nav-btn:hover { background: rgba(255,255,255,.04); border-left-color: rgba(74,158,255,.3); }
   .nav-btn.active { background: rgba(74,158,255,.1); border-left-color: var(--accent); }
@@ -75,46 +71,62 @@
   }
   .nav-btn-text { font-family: var(--font-head); font-size: .78rem; color: var(--text); line-height: 1.35; }
   .nav-btn.active .nav-btn-text { color: var(--accent); }
-  .nav-btn-sub  { font-size: .68rem; color: var(--muted); margin-top: .1rem; }
+  .nav-btn-sub { font-size: .68rem; color: var(--muted); margin-top: .1rem; }
   .sidebar-divider { height: 1px; background: var(--border); margin: .3rem .8rem; }
 
-  /* ── PDF VIEWER ── */
-  .viewer { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
-  .viewer-bar {
-    padding: .5rem 1.2rem; background: rgba(9,15,30,.8);
+  /* CONTENT PANEL */
+  .content { flex: 1; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3rem 2rem; }
+
+  .section-card {
+    width: 100%; max-width: 640px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 20px;
+    overflow: hidden;
+  }
+  .sc-header {
+    padding: 2rem 2rem 1.5rem;
     border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: .75rem; flex-shrink: 0;
+    display: flex; align-items: flex-start; gap: 1rem;
   }
-  .viewer-bar-label {
-    font-family: var(--font-head); font-size: .82rem; font-weight: 600;
+  .sc-num {
+    font-family: var(--font-mono); font-size: .75rem; color: var(--accent);
+    background: rgba(74,158,255,.12); border: 1px solid rgba(74,158,255,.25);
+    border-radius: 5px; padding: .2rem .55rem; flex-shrink: 0; margin-top: .2rem;
   }
-  .viewer-bar-pages {
+  .sc-title { font-family: var(--font-head); font-size: 1.2rem; font-weight: 700; margin-bottom: .3rem; }
+  .sc-pages {
     font-family: var(--font-mono); font-size: .72rem; color: var(--muted);
     background: rgba(255,255,255,.05); border: 1px solid var(--border);
-    border-radius: 4px; padding: .15rem .5rem;
+    border-radius: 4px; padding: .12rem .45rem; display: inline-block; margin-top: .35rem;
   }
-  .open-tab-btn {
-    margin-left: auto; display: flex; align-items: center; gap: .35rem;
-    font-family: var(--font-head); font-size: .75rem; color: var(--muted);
-    background: none; border: 1px solid var(--border); border-radius: 5px;
-    padding: .22rem .65rem; cursor: pointer; text-decoration: none; transition: all .15s;
-  }
-  .open-tab-btn:hover { color: var(--text); border-color: rgba(255,255,255,.2); }
+  .sc-body { padding: 1.5rem 2rem; display: flex; flex-direction: column; gap: 1rem; }
+  .sc-desc { font-size: .88rem; line-height: 1.7; color: #94A3B8; }
+  .sc-desc strong { color: var(--text); font-weight: 500; }
 
-  #pdfFrame {
-    flex: 1; width: 100%; border: none; background: #fff;
-    display: block; min-height: 0;
+  /* Open button */
+  .open-btn {
+    display: flex; align-items: center; justify-content: center; gap: .6rem;
+    background: linear-gradient(135deg, var(--accent), #2A6496);
+    color: #fff; font-family: var(--font-head); font-size: .9rem; font-weight: 700;
+    padding: .9rem 2rem; border-radius: 10px; text-decoration: none;
+    transition: all .2s; border: none; cursor: pointer; width: 100%;
   }
-  .pdf-fallback {
-    flex: 1; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 1rem;
-    background: #0C1527; color: #64748B; display: none;
+  .open-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(74,158,255,.3); }
+  .open-btn svg { width: 18px; height: 18px; }
+
+  .open-btn-note {
+    text-align: center; font-size: .75rem; color: var(--muted);
+    font-family: var(--font-mono);
   }
-  .pdf-fallback a {
-    display: inline-flex; align-items: center; gap: .5rem;
-    background: #4A9EFF; color: #050A14; font-family: 'Space Grotesk',sans-serif;
-    font-weight: 600; font-size: .88rem; padding: .65rem 1.4rem;
-    border-radius: 8px; text-decoration: none;
+
+  /* Content items */
+  .sc-items { display: flex; flex-direction: column; gap: .5rem; }
+  .sc-item {
+    display: flex; gap: .6rem; align-items: flex-start;
+    font-size: .82rem; color: #94A3B8; line-height: 1.5;
+  }
+  .sc-item-dot {
+    width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
+    flex-shrink: 0; margin-top: .45rem;
   }
 </style>
 </head>
@@ -124,167 +136,209 @@
   <a class="back-link" href="index.html">← Project Home</a>
   <span class="header-title">Project Report</span>
   <span class="header-sub">— Classical Mechanics · EETAC, UPC</span>
-  <a class="dl-btn" href="MecSat_project2.pdf" download="MecSat_Project_Report.pdf">
-    ↓ Download PDF
-  </a>
+  <a class="dl-btn" href="MecSat_project2.pdf" download="MecSat_Project_Report.pdf">↓ Download PDF</a>
 </header>
 
 <div class="layout">
-
   <nav class="sidebar">
     <div class="sidebar-heading">Table of Contents</div>
-
-    <button class="nav-btn active" onclick="jump(1,'cover','Cover')" id="btn-cover">
+    <button class="nav-btn active" id="btn-cover" onclick="show('cover')">
       <span class="nav-btn-num">—</span>
       <div><div class="nav-btn-text">Cover &amp; Index</div></div>
     </button>
-
     <div class="sidebar-divider"></div>
-
-    <button class="nav-btn" onclick="jump(3,'context','1–2 · Context &amp; Physical Model')" id="btn-context">
+    <button class="nav-btn" id="btn-context" onclick="show('context')">
       <span class="nav-btn-num">1–2</span>
-      <div>
-        <div class="nav-btn-text">Context &amp; Physical Model</div>
-        <div class="nav-btn-sub">Forces · Euler · Parameters</div>
-      </div>
+      <div><div class="nav-btn-text">Context &amp; Physical Model</div><div class="nav-btn-sub">Forces · Euler · Parameters</div></div>
     </button>
-
-    <button class="nav-btn" onclick="jump(4,'calc','3.1 · Calculations')" id="btn-calc">
+    <button class="nav-btn" id="btn-calc" onclick="show('calc')">
       <span class="nav-btn-num">3.1</span>
-      <div>
-        <div class="nav-btn-text">Calculations</div>
-        <div class="nav-btn-sub">Analytical + Euler tables</div>
-      </div>
+      <div><div class="nav-btn-text">Calculations</div><div class="nav-btn-sub">Analytical + Euler tables</div></div>
     </button>
-
-    <button class="nav-btn" onclick="jump(15,'analysis','3.2 · Analysis')" id="btn-analysis">
+    <button class="nav-btn" id="btn-analysis" onclick="show('analysis')">
       <span class="nav-btn-num">3.2</span>
-      <div>
-        <div class="nav-btn-text">Analysis</div>
-        <div class="nav-btn-sub">Plots · Questions d–h</div>
-      </div>
+      <div><div class="nav-btn-text">Analysis</div><div class="nav-btn-sub">Plots · Questions d–h</div></div>
     </button>
-
     <div class="sidebar-divider"></div>
-
-    <button class="nav-btn" onclick="jump(19,'t41','4.1 · Thrust Variation')" id="btn-t41">
+    <button class="nav-btn" id="btn-t41" onclick="show('t41')">
       <span class="nav-btn-num">4.1</span>
-      <div>
-        <div class="nav-btn-text">Task 1 — Thrust</div>
-        <div class="nav-btn-sub">T = 1000 / 1500 / 3000 N</div>
-      </div>
+      <div><div class="nav-btn-text">Task 1 — Thrust</div><div class="nav-btn-sub">T = 1000 / 1500 / 3000 N</div></div>
     </button>
-
-    <button class="nav-btn" onclick="jump(22,'t42','4.2 · Coriolis Force')" id="btn-t42">
+    <button class="nav-btn" id="btn-t42" onclick="show('t42')">
       <span class="nav-btn-num">4.2</span>
-      <div>
-        <div class="nav-btn-text">Task 2 — Coriolis</div>
-        <div class="nav-btn-sub">ω = 0 vs ω_Earth</div>
-      </div>
+      <div><div class="nav-btn-text">Task 2 — Coriolis</div><div class="nav-btn-sub">ω = 0 vs ω_Earth</div></div>
     </button>
-
-    <button class="nav-btn" onclick="jump(24,'t43','4.3 · Simplified Atmosphere')" id="btn-t43">
+    <button class="nav-btn" id="btn-t43" onclick="show('t43')">
       <span class="nav-btn-num">4.3</span>
-      <div>
-        <div class="nav-btn-text">Task 3 — Atmosphere</div>
-        <div class="nav-btn-sub">ISA vs Exponential</div>
-      </div>
+      <div><div class="nav-btn-text">Task 3 — Atmosphere</div><div class="nav-btn-sub">ISA vs Exponential</div></div>
     </button>
-
-    <button class="nav-btn" onclick="jump(26,'t44','4.4 · Mass Variation')" id="btn-t44">
+    <button class="nav-btn" id="btn-t44" onclick="show('t44')">
       <span class="nav-btn-num">4.4</span>
-      <div>
-        <div class="nav-btn-text">Task 4 — Propellant Mass</div>
-        <div class="nav-btn-sub">10 / 50 / 90 kg</div>
-      </div>
+      <div><div class="nav-btn-text">Task 4 — Propellant Mass</div><div class="nav-btn-sub">10 / 50 / 90 kg</div></div>
     </button>
-
     <div class="sidebar-divider"></div>
-
-    <button class="nav-btn" onclick="jump(30,'bonus','5 · Bonus — ISS Mission')" id="btn-bonus">
+    <button class="nav-btn" id="btn-bonus" onclick="show('bonus')">
       <span class="nav-btn-num">5</span>
-      <div>
-        <div class="nav-btn-text">Bonus — ISS Mission</div>
-        <div class="nav-btn-sub">3-stage · ECI · Hohmann</div>
-      </div>
+      <div><div class="nav-btn-text">Bonus — ISS Mission</div><div class="nav-btn-sub">3-stage · ECI · Hohmann</div></div>
     </button>
-
     <div class="sidebar-divider"></div>
-
-    <button class="nav-btn" onclick="jump(38,'appendix','6 · Appendix')" id="btn-appendix">
+    <button class="nav-btn" id="btn-appendix" onclick="show('appendix')">
       <span class="nav-btn-num">6</span>
-      <div>
-        <div class="nav-btn-text">Appendix</div>
-        <div class="nav-btn-sub">Python source — air_density.py</div>
-      </div>
+      <div><div class="nav-btn-text">Appendix</div><div class="nav-btn-sub">Python source — air_density.py</div></div>
     </button>
   </nav>
 
-  <div class="viewer">
-    <div class="viewer-bar">
-      <span class="viewer-bar-label" id="viewerLabel">Cover &amp; Index</span>
-      <span class="viewer-bar-pages" id="viewerPages">p. 1</span>
-      <a class="open-tab-btn" id="openTabBtn" href="MecSat_project2.pdf" target="_blank">
-        ↗ Open in new tab
-      </a>
-    </div>
-    <object id="pdfFrame" data="MecSat_project2.pdf#page=1" type="application/pdf">
-      <div class="pdf-fallback" id="pdfFallback" style="display:flex">
-        <p style="font-size:.9rem">Your browser is blocking inline PDF display.</p>
-        <a id="fallbackLink" href="MecSat_project2.pdf" target="_blank">↗ Open PDF in new tab</a>
-      </div>
-    </object>
+  <div class="content" id="contentPanel">
+    <!-- filled by JS -->
   </div>
 </div>
 
 <script>
-const SECTIONS = {
-  cover:    { page: 1,  label: 'Cover & Index',              pages: 'p. 1–2' },
-  context:  { page: 3,  label: '1–2 · Context & Physical Model', pages: 'p. 3' },
-  calc:     { page: 4,  label: '3.1 · Calculations',         pages: 'p. 4–14' },
-  analysis: { page: 15, label: '3.2 · Analysis',             pages: 'p. 15–18' },
-  t41:      { page: 19, label: '4.1 · Thrust Variation',     pages: 'p. 19–21' },
-  t42:      { page: 22, label: '4.2 · Coriolis Force',       pages: 'p. 22–24' },
-  t43:      { page: 24, label: '4.3 · Simplified Atmosphere',pages: 'p. 24–26' },
-  t44:      { page: 26, label: '4.4 · Mass Variation',       pages: 'p. 26–29' },
-  bonus:    { page: 30, label: '5 · Bonus — ISS Mission',    pages: 'p. 30–37' },
-  appendix: { page: 38, label: '6 · Appendix',               pages: 'p. 38–40' },
-};
-
-let currentSection = 'cover';
-
-function jump(page, sectionKey, label) {
-  const frame = document.getElementById('pdfFrame');
-  const sec = SECTIONS[sectionKey] || { label: label, pages: 'p. ' + page };
-
-  frame.data = `MecSat_project2.pdf#page=${page}`;
-  const fl = document.getElementById('fallbackLink');
-  if (fl) fl.href = `MecSat_project2.pdf#page=${page}`;
-  document.getElementById('viewerLabel').textContent = sec.label;
-  document.getElementById('viewerPages').textContent = sec.pages;
-  document.getElementById('openTabBtn').href = `MecSat_project2.pdf#page=${page}`;
-
-  // Update active button
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  const btn = document.getElementById('btn-' + sectionKey);
-  if (btn) btn.classList.add('active');
-
-  currentSection = sectionKey;
-
-  // Handle hash navigation from external links
-  history.replaceState(null, '', '#' + sectionKey);
-}
-
-// Ensure returning to index.html skips intro
 sessionStorage.setItem('introSeen', '1');
 
-// Support direct URL hash navigation (e.g. report.html#t41)
+const SECTIONS = {
+  cover: {
+    num: '—', title: 'Cover &amp; Index', pages: 'p. 1–2', page: 1,
+    desc: 'Project cover page, author list and full table of contents.',
+    items: ['Cover page with project title and authors', 'Table of contents with page numbers']
+  },
+  context: {
+    num: '1–2', title: 'Context &amp; Physical Model', pages: 'p. 3', page: 3,
+    desc: 'Project context and description of all physical forces included in the model.',
+    items: [
+      'Coordinate system: x=East, y=North, z=Up (local inertial frame at equator)',
+      'Force model: Gravity g(z), Drag F_D, Thrust F_T, Coriolis a_C',
+      'Euler integration scheme and base-case parameters',
+    ]
+  },
+  calc: {
+    num: '3.1', title: 'Calculations', pages: 'p. 4–14', page: 4,
+    desc: 'Full analytical derivation of the rocket trajectory followed by numerical Euler integration tables.',
+    items: [
+      'Analytical velocity v_z(t) during burn phase — Tsiolkovsky + gravitational loss',
+      'Analytical position z(t) during burn and coast phases',
+      'Numerical Euler tables: mass, velocity, position, drag at each time step',
+      'Comparison: analytical z_max ≈ 170 km vs Euler + ISA z_max ≈ 11.3 km',
+    ]
+  },
+  analysis: {
+    num: '3.2', title: 'Analysis', pages: 'p. 15–18', page: 15,
+    desc: 'Four simulation plots and answers to the five analysis questions (d–h).',
+    items: [
+      'Plot 1: Altitude vs time',
+      'Plot 2: Horizontal projection — y_North vs x_East',
+      'Plot 3: Speed vs time',
+      'Plot 4: Aerodynamic drag vs time',
+      'Q d: Why does drag decrease with altitude?',
+      'Q e: What happens at very high altitude?',
+      'Q f: Range and deviation of the rocket',
+      'Q g: Coriolis vs drag — which dominates?',
+      'Q h: Comparison with u=1000 m/s, N=10',
+    ]
+  },
+  t41: {
+    num: '4.1', title: 'Task 1 — Thrust Variation', pages: 'p. 19–21', page: 19,
+    desc: 'Simulation repeated for T = 1000, 1500 and 3000 N with identical propellant mass.',
+    items: [
+      'Q1: Non-monotonic altitude response — why T=3000N reaches less than T=1500N',
+      'Q2: Troposphere escape (11 km boundary) for each thrust value',
+      'Q3: Burnout time relationship t_burn = m_prop·g₀·Isp / T',
+      'Plots: altitude, speed, drag and mass vs time for all three cases',
+    ]
+  },
+  t42: {
+    num: '4.2', title: 'Task 2 — Coriolis Force', pages: 'p. 22–24', page: 22,
+    desc: 'Trajectory comparison with ω = 7.27×10⁻⁵ rad/s (base) vs ω = 0 (disabled).',
+    items: [
+      'Q1: Landing displacement — Coriolis ON: x=−3.044 m, OFF: x=0',
+      'Q2: East-West direction most affected (a_Cx = −2ω·vz ≠ 0, a_Cy = 0 at equator)',
+      'Plots: altitude, East displacement, North displacement, horizontal projection',
+    ]
+  },
+  t43: {
+    num: '4.3', title: 'Task 3 — Atmosphere Model', pages: 'p. 24–26', page: 24,
+    desc: 'ISA multi-layer model compared with the simplified exponential ρ(z) = ρ₀·exp(−z/H).',
+    items: [
+      'Q1: Max altitude — ISA: 11.278 km, Exponential: 11.765 km (+0.487 km)',
+      'Q2: Drag evolution — ISA denser 7–15 km range, kink at tropopause (11 km)',
+      'Q3: ISA is more realistic — validated to &lt;1% up to 85 km',
+      'Density comparison table at key altitudes (0–30 km)',
+    ]
+  },
+  t44: {
+    num: '4.4', title: 'Task 4 — Propellant Mass', pages: 'p. 26–29', page: 26,
+    desc: 'Propellant load varied from 10 to 90 kg with fixed thrust T = 1500 N.',
+    items: [
+      'Q1: Initial acceleration a₀ = T/m₀ − g₀: 65.2 / 15.2 / 5.2 m/s² for 10/50/90 kg',
+      'Q2: Burnout altitudes: 972 m / 5683 m / 9916 m — more propellant always wins',
+      'Plots: altitude, speed, mass and acceleration with burnout markers',
+    ]
+  },
+  bonus: {
+    num: '5', title: 'Bonus — 3-Stage ISS Mission', pages: 'p. 30–37', page: 30,
+    desc: 'Full ECI simulation of a Soyuz-type 3-stage rocket reaching ISS at 408 km altitude.',
+    items: [
+      'Stage parameters and Tsiolkovsky Δv budget (10 630 m/s ideal)',
+      'Gravity turn profile: 3 km → 80 km pitch-over',
+      'Mission milestones: S1 sep at 142 s (86 km), S2 burnout 281 s (171 km)',
+      'Hohmann transfer from parking orbit (266 km) to ISS (408 km)',
+      'Final orbit: h=413 km, v=7665 m/s, T=92.8 min, ecc=0.0011',
+      'Leapfrog integrator for coast phases vs Euler for powered phases',
+      'Documented simplifications: equatorial orbit, pre-programmed gravity turn',
+    ]
+  },
+  appendix: {
+    num: '6', title: 'Appendix', pages: 'p. 38–40', page: 38,
+    desc: 'Python source code listing for the atmospheric density reference implementation.',
+    items: ['air_density.py — original ISA density model (reference, unmodified)']
+  },
+};
+
+function show(key) {
+  const sec = SECTIONS[key];
+  if (!sec) return;
+
+  // Update sidebar
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('btn-' + key);
+  if (btn) btn.classList.add('active');
+
+  // Build content card
+  const itemsHtml = sec.items.map(i =>
+    `<div class="sc-item"><div class="sc-item-dot"></div><span>${i}</span></div>`
+  ).join('');
+
+  document.getElementById('contentPanel').innerHTML = `
+    <div class="section-card">
+      <div class="sc-header">
+        <span class="sc-num">${sec.num}</span>
+        <div>
+          <div class="sc-title">${sec.title}</div>
+          <span class="sc-pages">${sec.pages}</span>
+        </div>
+      </div>
+      <div class="sc-body">
+        <p class="sc-desc">${sec.desc}</p>
+        <div class="sc-items">${itemsHtml}</div>
+        <a class="open-btn" href="MecSat_project2.pdf#page=${sec.page}" target="_blank">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/>
+          </svg>
+          Open ${sec.pages} in PDF viewer
+        </a>
+        <p class="open-btn-note">Opens in a new tab · PDF · ${sec.pages}</p>
+      </div>
+    </div>
+  `;
+
+  history.replaceState(null, '', '#' + key);
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   const hash = location.hash.replace('#', '');
-  if (hash && SECTIONS[hash]) {
-    const sec = SECTIONS[hash];
-    jump(sec.page, hash, sec.label);
-  }
+  show(hash && SECTIONS[hash] ? hash : 'cover');
 });
 </script>
 </body>
