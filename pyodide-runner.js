@@ -20,6 +20,8 @@ class PyodideRunner {
   }
 
   init() {
+    // Ensure returning to index.html skips the intro sequence
+    sessionStorage.setItem('introSeen', '1');
     document.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
   }
 

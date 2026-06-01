@@ -103,7 +103,18 @@
 
   #pdfFrame {
     flex: 1; width: 100%; border: none; background: #fff;
-    display: block;
+    display: block; min-height: 0;
+  }
+  .pdf-fallback {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 1rem;
+    background: #0C1527; color: #64748B; display: none;
+  }
+  .pdf-fallback a {
+    display: inline-flex; align-items: center; gap: .5rem;
+    background: #4A9EFF; color: #050A14; font-family: 'Space Grotesk',sans-serif;
+    font-weight: 600; font-size: .88rem; padding: .65rem 1.4rem;
+    border-radius: 8px; text-decoration: none;
   }
 </style>
 </head>
@@ -217,7 +228,12 @@
         ↗ Open in new tab
       </a>
     </div>
-    <iframe id="pdfFrame" src="MecSat_project2.pdf#page=1&toolbar=1&navpanes=0"></iframe>
+    <object id="pdfFrame" data="MecSat_project2.pdf#page=1" type="application/pdf">
+      <div class="pdf-fallback" id="pdfFallback" style="display:flex">
+        <p style="font-size:.9rem">Your browser is blocking inline PDF display.</p>
+        <a id="fallbackLink" href="MecSat_project2.pdf" target="_blank">↗ Open PDF in new tab</a>
+      </div>
+    </object>
   </div>
 </div>
 
@@ -241,7 +257,9 @@ function jump(page, sectionKey, label) {
   const frame = document.getElementById('pdfFrame');
   const sec = SECTIONS[sectionKey] || { label: label, pages: 'p. ' + page };
 
-  frame.src = `MecSat_project2.pdf#page=${page}&toolbar=1&navpanes=0`;
+  frame.data = `MecSat_project2.pdf#page=${page}`;
+  const fl = document.getElementById('fallbackLink');
+  if (fl) fl.href = `MecSat_project2.pdf#page=${page}`;
   document.getElementById('viewerLabel').textContent = sec.label;
   document.getElementById('viewerPages').textContent = sec.pages;
   document.getElementById('openTabBtn').href = `MecSat_project2.pdf#page=${page}`;
@@ -256,6 +274,9 @@ function jump(page, sectionKey, label) {
   // Handle hash navigation from external links
   history.replaceState(null, '', '#' + sectionKey);
 }
+
+// Ensure returning to index.html skips intro
+sessionStorage.setItem('introSeen', '1');
 
 // Support direct URL hash navigation (e.g. report.html#t41)
 window.addEventListener('DOMContentLoaded', () => {
