@@ -48,7 +48,7 @@
       </p>
       <div class="statement-questions">
         <div class="sq"><span class="sq-num">Q1</span>How does the trajectory change when the Coriolis force is removed? Compare the landing coordinates (x, y) for both cases.</div>
-        <div class="sq"><span class="sq-num">Q2</span>Which spatial direction — East-West or North-South — is most affected by the Coriolis force? Justify physically using the expression a⃗_C = −2ω⃗ × v⃗ at the equator.</div>
+        <div class="sq"><span class="sq-num">Q2</span>Which spatial direction — East-West or North-South — is most affected by the Coriolis force? Justify physically using the expression a_C = −2ω × v at the equator.</div>
       </div>
     </div>
   </div>
@@ -59,12 +59,12 @@
       <div class="params-grid">
         <div class="param"><div class="param-label">Case A — Coriolis ON</div><div class="param-val"><em>ω = 7.27×10⁻⁵</em> rad/s</div></div>
         <div class="param"><div class="param-label">Case B — Coriolis OFF</div><div class="param-val"><em>ω = 0</em> (disabled)</div></div>
-        <div class="param"><div class="param-label">Coriolis acceleration</div><div class="param-val">a⃗_C = −2 ω⃗ × v⃗</div></div>
-        <div class="param"><div class="param-label">At equator (ω⃗ = ω ŷ)</div><div class="param-val">a_Cx = −2ω·vz · a_Cy = 0</div></div>
+        <div class="param"><div class="param-label">Coriolis acceleration</div><div class="param-val">a_C = −2 ω × v</div></div>
+        <div class="param"><div class="param-label">At equator (ω = ω ŷ)</div><div class="param-val">a_Cx = −2ω·vz · a_Cy = 0</div></div>
         <div class="param"><div class="param-label">Fixed thrust / atmosphere</div><div class="param-val">T = <em>1500</em> N · ISA · 90 kg prop</div></div>
         <div class="param"><div class="param-label">Frame</div><div class="param-val">Local inertial (x=East, y=North, z=Up)</div></div>
       </div>
-      <div class="insight"><strong>Physical mechanism:</strong> a rising rocket (v_z &gt; 0) experiences a_Cx = −2ω·v_z &lt; 0 — deflected <strong>westward</strong>. On descent (v_z &lt; 0) it deflects eastward, partially cancelling. Net result: a small but measurable westward landing displacement. North-South component is exactly zero at the equator (a_Cy = 0 when ω⃗ ∥ ŷ).</div>
+      <div class="insight"><strong>Physical mechanism:</strong> a rising rocket (v_z &gt; 0) experiences a_Cx = −2ω·v_z &lt; 0 — deflected <strong>westward</strong>. On descent (v_z &lt; 0) it deflects eastward, partially cancelling. Net result: a small but measurable westward landing displacement. North-South component is exactly zero at the equator (a_Cy = 0 when ω ∥ ŷ).</div>
     </div>
   </div>
 
@@ -84,7 +84,7 @@
     <div class="card-header"><div class="card-icon gold">🔬</div><div><div class="card-title">Analysis</div><div class="card-sub">Answers derived from simulation</div></div></div>
     <div class="card-body">
       <div class="q-item"><div class="q-title">Q1 — Trajectory change</div><div class="q-body">With Coriolis ON the rocket lands 3.044 m west of the launch site (−x direction). Without Coriolis it lands exactly at the origin. Maximum altitude and flight time are virtually identical in both cases — the Coriolis force affects the horizontal trajectory but not the vertical dynamics significantly.</div></div>
-      <div class="q-item"><div class="q-title">Q2 — Direction most affected</div><div class="q-body">East-West (x) is completely dominant. At the equator: a_Cx = −2ω·vz (depends on vertical velocity, non-zero throughout flight) while a_Cy = 0 exactly (the North component of ω⃗ × v⃗ is zero when ω⃗ ∥ ŷ and the rocket moves in the x-z plane). North deviation is identically zero by symmetry.</div></div>
+      <div class="q-item"><div class="q-title">Q2 — Direction most affected</div><div class="q-body">East-West (x) is completely dominant. At the equator: a_Cx = −2ω·vz (depends on vertical velocity, non-zero throughout flight) while a_Cy = 0 exactly (the North component of ω × v is zero when ω ∥ ŷ and the rocket moves in the x-z plane). North deviation is identically zero by symmetry.</div></div>
     </div>
   </div>
 
@@ -216,5 +216,6 @@ window.addEventListener('DOMContentLoaded', () => runner.init());
 </script>
 </body>
 </html>
+
 
 

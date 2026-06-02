@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -364,17 +364,17 @@
 
  COORDINATE SYSTEM  (local inertial frame fixed to Earth's surface at equator)
    x = East,  y = North,  z = Up (radial)
-   ω⃗ = ω ŷ   (Earth's rotation axis points North at the equator)
+   ω = ω ŷ   (Earth's rotation axis points North at the equator)
 
  FORCES ACTING ON THE ROCKET
    (1) Gravity     : g(z) = −GM / (R + z)²  ẑ    [variable with altitude]
-   (2) Drag        : F⃗_D = −½ Cd A ρ(z) |v⃗| v⃗   [opposes velocity]
-   (3) Thrust      : F⃗_T = T ẑ               [only while propellant remains]
-   (4) Coriolis    : a⃗_C = −2 ω⃗ × v⃗         [rotating-frame pseudo-force]
+   (2) Drag        : F_D = −½ Cd A ρ(z) |v| v   [opposes velocity]
+   (3) Thrust      : F_T = T ẑ               [only while propellant remains]
+   (4) Coriolis    : a_C = −2 ω × v         [rotating-frame pseudo-force]
 
  EULER INTEGRATION SCHEME
-   r⃗_{n+1} = r⃗_n + v⃗_n · Δt          (position updated with OLD velocity)
-   v⃗_{n+1} = v⃗_n + a⃗_n · Δt          (velocity updated with acceleration at t_n)
+   r_{n+1} = r_n + v_n · Δt          (position updated with OLD velocity)
+   v_{n+1} = v_n + a_n · Δt          (velocity updated with acceleration at t_n)
    m_{n+1} = m_n  − ṁ · Δt           (mass decreases at constant rate during burn)
 
  FILE STRUCTURE
@@ -2086,3 +2086,4 @@ def plot_orbit(data):
 </script>
 </body>
 </html>
+
