@@ -353,586 +353,586 @@
      ═══════════════════════════════════════════════════ -->
 
 <script type="text/x-source" id="src-rocket_simulation">
-"""\
-3D\ rocket\ trajectory\ simulation\ —\ explicit\ Euler\ integration\.\
-Authors:\ Rubén\ Praena,\ Claudia\ Ros,\ Antoni\ Ruiz,\ Miguel\ Sanz,\
-\ \ \ \ \ \ \ \ \ Elishka\ Mrázek,\ Joel\ García,\ Giulia\ Latorre\
-\
-Frame:\ x\ =\ East,\ y\ =\ North,\ z\ =\ Up\ \(equatorial\ surface,\ local\ inertial\)\.\
-Forces:\ gravity\ g\(z\)=GM/\(R\+z\)²,\ drag\ F_D=\-½CdAρ\|v\|v,\ thrust\ T·ẑ,\ Coriolis\ \-2ω×v\.\
-Euler:\ r_\{n\+1\}\ =\ r_n\ \+\ v_n·dt,\ \ v_\{n\+1\}\ =\ v_n\ \+\ a_n·dt,\ \ m_\{n\+1\}\ =\ m_n\ \-\ ṁ·dt\
-"""\
-\
-import\ sys\
-import\ numpy\ as\ np\
-import\ matplotlib\.pyplot\ as\ plt\
-from\ matplotlib\.widgets\ import\ Slider\
-\
-\#\ Force\ UTF\-8\ on\ stdout/stderr\ so\ matplotlib\ font\ warnings\ don't\ crash\ on\ Windows\
-\#\ \(the\ default\ Windows\ console\ uses\ cp1252\ which\ cannot\ encode\ characters\ like\ em\-dash\)\
-if\ hasattr\(sys\.stdout,\ 'reconfigure'\):\
-\ \ \ \ sys\.stdout\.reconfigure\(encoding='utf\-8',\ errors='replace'\)\
-if\ hasattr\(sys\.stderr,\ 'reconfigure'\):\
-\ \ \ \ sys\.stderr\.reconfigure\(encoding='utf\-8',\ errors='replace'\)\
-\
-\
-\
-\#\ SECTION\ 1:\ PHYSICAL\ AND\ EARTH\ CONSTANTS\
-\
-GM\ \ \ \ \ \ \ \ \ \ =\ 3\.99e14\ \ \ \ \ \#\ m³/s²\ \ \ —\ Earth's\ gravitational\ parameter\
-R_EARTH\ \ \ \ \ =\ 6\.378e6\ \ \ \ \#\ m\ \ \ \ \ \ \ —\ Earth's\ mean\ radius\
-G0\ \ \ \ \ \ \ \ \ \ =\ 9\.80665\ \ \ \ \#\ m/s²\ \ \ \ —\ standard\ gravity\ at\ surface\ \(used\ for\ mass\ flow\ rate\)\
-OMEGA_EARTH\ =\ 7\.27e\-5\ \ \ \ \#\ rad/s\ \ \ —\ Earth's\ angular\ velocity\
-\
-\
-\
-\#\ SECTION\ 2:\ DEFAULT\ ROCKET\ PARAMETERS\
-\
-M0\ \ \ =\ 100\.0\ \ \ \#\ kg\ \ \ —\ initial\ total\ mass\ \ \(structure\ \+\ propellant\ \+\ payload\)\
-MP\ \ \ =\ 10\.0\ \ \ \ \#\ kg\ \ \ —\ payload/structural\ mass\ that\ remains\ after\ burnout\
-T0\ \ \ =\ 1500\.0\ \ \#\ N\ \ \ \ —\ nominal\ thrust\
-ISP\ \ =\ 100\.0\ \ \ \#\ s\ \ \ \ —\ specific\ impulse\ \ \(low\ value\ →\ low\ fuel\ efficiency\)\
-CD\ \ \ =\ 0\.5\ \ \ \ \ \#\ —\ \ \ \ —\ drag\ coefficient\ \ \(dimensionless\)\
-AREF\ =\ 0\.1\ \ \ \ \ \#\ m²\ \ \ —\ rocket\ cross\-sectional\ reference\ area\
-\
-\
-\#\ SECTION\ 3:\ ATMOSPHERIC\ DENSITY\ MODELS\
-\
-\#\ density_isa:\ multi\-layer\ ISA\ model,\ used\ by\ default\.\
-\#\ density_exponential:\ ρ₀·exp\(\-z/H\),\ used\ in\ 4_3_Drag\.py\ for\ comparison\.\
-\#\ Note:\ ISA\ has\ a\ slope\ discontinuity\ at\ each\ layer\ boundary\ \(kink\ in\ the\ lapse\ rate\)\.\
-\
-\
-\#\ ISA\ atmospheric\ constants\
-RHO0\ \ \ \ =\ 1\.225\ \ \ \ \#\ kg/m³\ \ \ \ \ —\ sea\-level\ density\
-H_SCALE\ =\ 8500\.0\ \ \ \#\ m\ \ \ \ \ \ \ \ \ —\ exponential\ scale\ height\
-T0_ISA\ \ =\ 288\.15\ \ \ \#\ K\ \ \ \ \ \ \ \ \ —\ sea\-level\ temperature\
-L_TROP\ \ =\ 0\.0065\ \ \ \#\ K/m\ \ \ \ \ \ \ —\ troposphere\ lapse\ rate\ \(temperature\ drop\ per\ metre\)\
-R_AIR\ \ \ =\ 287\.05\ \ \ \#\ J/\(kg·K\)\ \ —\ specific\ gas\ constant\ for\ dry\ air\
-\
-\
-def\ density_isa\(z\):\
-\ \ \ \ """\
-\ \ \ \ ISA\ air\ density\ \[kg/m³\]\ at\ altitude\ z\ \[m\]\.\
-\ \ \ \ Layers:\ troposphere\ 0\-11\ km,\ lower\ stratosphere\ 11\-20\ km\ \(isothermal\ at\ 216\.65\ K\),\
-\ \ \ \ upper\ stratosphere\ 20\-32\ km,\ mesosphere\ 32\-51\ km,\ thermosphere\ 51\-85\ km,\
-\ \ \ \ exponential\ fallback\ above\ 85\ km\.\ Returns\ at\ least\ 1e\-20\.\
-\ \ \ \ """\
-\ \ \ \ z_km\ =\ z\ /\ 1000\.0\
-\
-\ \ \ \ if\ z_km\ <\ 11:\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \#\ Troposphere\
-\ \ \ \ \ \ \ \ T\ =\ T0_ISA\ \-\ L_TROP\ \*\ z\
-\ \ \ \ \ \ \ \ p\ =\ 101325\.0\ \*\ \(T\ /\ T0_ISA\)\ \*\*\ \(G0\ /\ \(L_TROP\ \*\ R_AIR\)\)\
-\
-\ \ \ \ elif\ z_km\ <\ 20:\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \#\ Lower\ stratosphere\ \(isothermal\)\
-\ \ \ \ \ \ \ \ T\ =\ 216\.65\
-\ \ \ \ \ \ \ \ p\ =\ 22632\.1\ \*\ np\.exp\(\-G0\ \*\ \(z\ \-\ 11000\)\ /\ \(R_AIR\ \*\ T\)\)\
-\
-\ \ \ \ elif\ z_km\ <\ 32:\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \#\ Upper\ stratosphere\
-\ \ \ \ \ \ \ \ T\ \ \ \ \ =\ 216\.65\ \+\ 0\.001\ \*\ \(z\ \-\ 20000\)\
-\ \ \ \ \ \ \ \ T_avg\ =\ \(216\.65\ \+\ T\)\ /\ 2\.0\ \ \ \ \ \ \ \ \ \ \ \ \#\ average\ T\ over\ the\ layer\ \(for\ integration\)\
-\ \ \ \ \ \ \ \ p\ \ \ \ \ =\ 5474\.89\ \*\ np\.exp\(\-G0\ \*\ \(z\ \-\ 20000\)\ /\ \(R_AIR\ \*\ T_avg\)\)\
-\
-\ \ \ \ elif\ z_km\ <\ 47:\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \#\ Lower\ mesosphere\
-\ \ \ \ \ \ \ \ T\ \ \ \ \ =\ 228\.65\ \+\ 0\.0028\ \*\ \(z\ \-\ 32000\)\
-\ \ \ \ \ \ \ \ T_avg\ =\ \(228\.65\ \+\ T\)\ /\ 2\.0\
-\ \ \ \ \ \ \ \ p\ \ \ \ \ =\ 868\.02\ \*\ np\.exp\(\-G0\ \*\ \(z\ \-\ 32000\)\ /\ \(R_AIR\ \*\ T_avg\)\)\
-\
-\ \ \ \ elif\ z_km\ <\ 51:\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \#\ Upper\ mesosphere\ \(isothermal\)\
-\ \ \ \ \ \ \ \ T\ =\ 270\.65\
-\ \ \ \ \ \ \ \ p\ =\ 110\.91\ \*\ np\.exp\(\-G0\ \*\ \(z\ \-\ 47000\)\ /\ \(R_AIR\ \*\ T\)\)\
-\
-\ \ \ \ elif\ z_km\ <\ 71:\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \#\ Lower\ thermosphere\
-\ \ \ \ \ \ \ \ T\ \ \ \ \ =\ 270\.65\ \+\ 0\.0028\ \*\ \(z\ \-\ 51000\)\
-\ \ \ \ \ \ \ \ T_avg\ =\ \(270\.65\ \+\ T\)\ /\ 2\.0\
-\ \ \ \ \ \ \ \ p\ \ \ \ \ =\ 66\.939\ \*\ np\.exp\(\-G0\ \*\ \(z\ \-\ 51000\)\ /\ \(R_AIR\ \*\ T_avg\)\)\
-\
-\ \ \ \ elif\ z_km\ <\ 85:\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \#\ Upper\ thermosphere\
-\ \ \ \ \ \ \ \ T\ \ \ \ \ =\ 270\.65\ \+\ 0\.002\ \*\ \(z\ \-\ 71000\)\
-\ \ \ \ \ \ \ \ T_avg\ =\ \(270\.65\ \+\ T\)\ /\ 2\.0\
-\ \ \ \ \ \ \ \ p\ \ \ \ \ =\ 3\.9564\ \*\ np\.exp\(\-G0\ \*\ \(z\ \-\ 71000\)\ /\ \(R_AIR\ \*\ T_avg\)\)\
-\
-\ \ \ \ else:\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \#\ Above\ 85\ km:\ exponential\ falloff\
-\ \ \ \ \ \ \ \ return\ max\(1\.5e\-5\ \*\ np\.exp\(\-\(z\ \-\ 85000\)\ /\ 6000\.0\),\ 1e\-20\)\
-\
-\ \ \ \ rho\ =\ p\ /\ \(R_AIR\ \*\ T\)\
-\ \ \ \ return\ max\(rho,\ 1e\-20\)\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \#\ never\ return\ exactly\ zero\
-\
-\
-def\ density_exponential\(z\):\
-\ \ \ \ """Single\-exponential\ model:\ ρ\(z\)\ =\ ρ₀·exp\(−z/H\),\ H\ =\ 8500\ m\."""\
-\ \ \ \ return\ RHO0\ \*\ np\.exp\(\-z\ /\ H_SCALE\)\
-\
-\
-\#\ SECTION\ 4:\ EULER\ INTEGRATION\
-\
-def\ simulate_rocket\(\
-\ \ \ \ thrust\ \ \ \ \ \ \ \ =\ T0,\
-\ \ \ \ omega\ \ \ \ \ \ \ \ \ =\ OMEGA_EARTH,\
-\ \ \ \ density_func\ \ =\ density_isa,\
-\ \ \ \ m_propellant\ \ =\ M0\ \-\ MP,\ \ \ \ \#\ kg\ —\ propellant\ mass\ \(default:\ 90\ kg\)\
-\ \ \ \ dt\ \ \ \ \ \ \ \ \ \ \ \ =\ 0\.1,\ \ \ \ \ \ \ \ \ \#\ s\ \ —\ Euler\ time\ step\
-\):\
-\
-\
-\ \ \ \ \#\ \-\-\-\ derived\ burn\ parameters\ \-\-\-\
-\ \ \ \ m_initial\ =\ MP\ \+\ m_propellant\ \ \ \ \ \ \ \ \ \ \ \ \ \ \#\ total\ initial\ mass\ \[kg\]\
-\ \ \ \ mdot\ \ \ \ \ \ =\ thrust\ /\ \(G0\ \*\ ISP\)\ \ \ \ \ \ \ \ \ \ \ \#\ mass\ flow\ rate\ \ ṁ\ =\ T\ /\ \(g₀\ ·\ Isp\)\ \ \[kg/s\]\
-\ \ \ \ t_burn\ \ \ \ =\ m_propellant\ /\ mdot\ \ \ \ \ \ \ \ \ \ \ \ \#\ burn\-out\ time\ \ \[s\]\
-\
-\ \ \ \ \#\ \-\-\-\ Earth's\ rotation\ vector:\ ω⃗\ =\ ω\ ŷ\ at\ the\ equator\ \-\-\-\
-\ \ \ \ \#\ \ \ \ \ \(the\ rotation\ axis\ points\ toward\ geographic\ North\ =\ \+y\ direction\)\
-\ \ \ \ omega_vec\ =\ np\.array\(\[0\.0,\ omega,\ 0\.0\]\)\
-\
-\ \ \ \ \#\ \-\-\-\ initial\ state\ \-\-\-\
-\ \ \ \ r\ =\ np\.array\(\[0\.0,\ 0\.0,\ 0\.0\]\)\ \ \ \ \#\ position\ \[m\]\
-\ \ \ \ v\ =\ np\.array\(\[0\.0,\ 0\.0,\ 0\.0\]\)\ \ \ \ \#\ velocity\ \[m/s\]\
-\ \ \ \ m\ =\ m_initial\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \#\ current\ mass\ \[kg\]\
-\ \ \ \ t\ =\ 0\.0\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \#\ elapsed\ time\ \[s\]\
-\
-\ \ \ \ \#\ \-\-\-\ history\ lists\ \(converted\ to\ arrays\ on\ return\)\ \-\-\-\
-\ \ \ \ t_arr\ \ \ \ \ =\ \[t\]\
-\ \ \ \ r_arr\ \ \ \ \ =\ \[r\.copy\(\)\]\
-\ \ \ \ v_arr\ \ \ \ \ =\ \[v\.copy\(\)\]\
-\ \ \ \ drag_arr\ \ =\ \[0\.0\]\
-\ \ \ \ mass_arr\ \ =\ \[m\]\
-\ \ \ \ accel_arr\ =\ \[0\.0\]\
-\
-\ \ \ \ launched\ =\ False\ \ \ \ \#\ becomes\ True\ once\ z\ >\ 0\ for\ the\ first\ time\
-\
-\ \ \ \ while\ True:\
-\ \ \ \ \ \ \ \ z\ =\ r\[2\]\ \ \ \#\ current\ altitude\ \[m\]\
-\
-\ \ \ \ \ \ \ \ \#\ \-\-\-\ termination:\ rocket\ has\ hit\ the\ ground\ after\ liftoff\ \-\-\-\
-\ \ \ \ \ \ \ \ if\ launched\ and\ z\ <\ 0\.0:\
-\ \ \ \ \ \ \ \ \ \ \ \ break\
-\
-\ \ \ \ \ \ \ \ \#\ Clamp\ altitude\ for\ physics\ evaluation\ \(density/gravity\ below\ ground\ =\ sea\ level\)\
-\ \ \ \ \ \ \ \ z_eff\ =\ max\(z,\ 0\.0\)\
-\
-\ \ \ \ \ \ \ \ \#\ gravity\ —\ decreases\ with\ altitude\
-\ \ \ \ \ \ \ \ g_mag\ \ =\ GM\ /\ \(R_EARTH\ \+\ z_eff\)\ \*\*\ 2\
-\ \ \ \ \ \ \ \ a_grav\ =\ np\.array\(\[0\.0,\ 0\.0,\ \-g_mag\]\)\
-\
-\ \ \ \ \ \ \ \ \#\ thrust\ —\ vertical,\ active\ while\ propellant\ remains\
-\ \ \ \ \ \ \ \ if\ t\ <\ t_burn:\
-\ \ \ \ \ \ \ \ \ \ \ \ a_thrust\ =\ np\.array\(\[0\.0,\ 0\.0,\ thrust\ /\ m\]\)\
-\ \ \ \ \ \ \ \ \ \ \ \ m_next\ \ \ =\ max\(m\ \-\ mdot\ \*\ dt,\ MP\)\ \ \ \#\ clamp\ so\ mass\ never\ drops\ below\ MP\
-\ \ \ \ \ \ \ \ else:\
-\ \ \ \ \ \ \ \ \ \ \ \ a_thrust\ =\ np\.zeros\(3\)\
-\ \ \ \ \ \ \ \ \ \ \ \ m_next\ \ \ =\ MP\
-\
-\ \ \ \ \ \ \ \ \#\ drag\ —\ F_D\ =\ \-½\ Cd\ A\ ρ\ \|v\|\ v\
-\ \ \ \ \ \ \ \ rho\ \ \ =\ density_func\(z_eff\)\
-\ \ \ \ \ \ \ \ v_mag\ =\ np\.linalg\.norm\(v\)\
-\
-\ \ \ \ \ \ \ \ if\ v_mag\ >\ 0\.0:\
-\ \ \ \ \ \ \ \ \ \ \ \ F_drag\ =\ \-0\.5\ \*\ CD\ \*\ AREF\ \*\ rho\ \*\ v_mag\ \*\ v\
-\ \ \ \ \ \ \ \ else:\
-\ \ \ \ \ \ \ \ \ \ \ \ F_drag\ =\ np\.zeros\(3\)\
-\
-\ \ \ \ \ \ \ \ a_drag\ =\ F_drag\ /\ m\
-\
-\ \ \ \ \ \ \ \ \#\ Coriolis:\ \-2ω×v;\ upward\ motion\ deflects\ west\ at\ the\ equator\
-\ \ \ \ \ \ \ \ a_coriolis\ =\ \-2\.0\ \*\ np\.cross\(omega_vec,\ v\)\
-\
-\ \ \ \ \ \ \ \ a\ =\ a_grav\ \+\ a_thrust\ \+\ a_drag\ \+\ a_coriolis\
-\
-\ \ \ \ \ \ \ \ \#\ Euler:\ r\ uses\ velocity\ from\ the\ current\ step,\ not\ the\ updated\ one\
-\ \ \ \ \ \ \ \ r_new\ =\ r\ \+\ v\ \*\ dt\
-\ \ \ \ \ \ \ \ v_new\ =\ v\ \+\ a\ \*\ dt\
-\
-\ \ \ \ \ \ \ \ \#\ \-\-\-\ advance\ state\ \-\-\-\
-\ \ \ \ \ \ \ \ r\ =\ r_new\
-\ \ \ \ \ \ \ \ v\ =\ v_new\
-\ \ \ \ \ \ \ \ m\ =\ m_next\
-\ \ \ \ \ \ \ \ t\ \+=\ dt\
-\
-\ \ \ \ \ \ \ \ \#\ \-\-\-\ detect\ liftoff\ \-\-\-\
-\ \ \ \ \ \ \ \ if\ not\ launched\ and\ r\[2\]\ >\ 0\.0:\
-\ \ \ \ \ \ \ \ \ \ \ \ launched\ =\ True\
-\
-\ \ \ \ \ \ \ \ \#\ \-\-\-\ store\ step\ \-\-\-\
-\ \ \ \ \ \ \ \ t_arr\.append\(t\)\
-\ \ \ \ \ \ \ \ r_arr\.append\(r\.copy\(\)\)\
-\ \ \ \ \ \ \ \ v_arr\.append\(v\.copy\(\)\)\
-\ \ \ \ \ \ \ \ drag_arr\.append\(np\.linalg\.norm\(F_drag\)\)\
-\ \ \ \ \ \ \ \ mass_arr\.append\(m\)\
-\ \ \ \ \ \ \ \ accel_arr\.append\(np\.linalg\.norm\(a\)\)\
-\
-\ \ \ \ return\ \(\
-\ \ \ \ \ \ \ \ np\.array\(t_arr\),\
-\ \ \ \ \ \ \ \ np\.array\(r_arr\),\
-\ \ \ \ \ \ \ \ np\.array\(v_arr\),\
-\ \ \ \ \ \ \ \ np\.array\(drag_arr\),\
-\ \ \ \ \ \ \ \ np\.array\(mass_arr\),\
-\ \ \ \ \ \ \ \ np\.array\(accel_arr\),\
-\ \ \ \ \)\
-\
-\
-\#\ SECTION\ 5:\ POST\-PROCESSING\ UTILITIES\
-\
-def\ compute_metrics\(t,\ r,\ v\):\
-\ \ \ \ """\
-\ \ \ \ Extract\ key\ flight\ performance\ metrics\ from\ simulation\ arrays\.\
-\
-\ \ \ \ Parameters\
-\ \ \ \ \-\-\-\-\-\-\-\-\-\-\
-\ \ \ \ t\ :\ \(N,\)\ \ \ time\ array\ \[s\]\
-\ \ \ \ r\ :\ \(N,3\)\ \ position\ array\ \[m\]\
-\ \ \ \ v\ :\ \(N,3\)\ \ velocity\ array\ \[m/s\]\
-\
-\ \ \ \ Returns\
-\ \ \ \ \-\-\-\-\-\-\-\
-\ \ \ \ dict\ with\ keys:\
-\ \ \ \ \ \ 'z_max'\ \ \ \ \ —\ maximum\ altitude\ reached\ \[m\]\
-\ \ \ \ \ \ 't_zmax'\ \ \ \ —\ time\ at\ which\ z_max\ is\ reached\ \[s\]\
-\ \ \ \ \ \ 't_flight'\ \ —\ total\ flight\ duration\ \[s\]\
-\ \ \ \ \ \ 'x_land'\ \ \ \ —\ East\ displacement\ at\ landing\ \[m\]\
-\ \ \ \ \ \ 'y_land'\ \ \ \ —\ North\ displacement\ at\ landing\ \[m\]\
-\ \ \ \ \ \ 'range'\ \ \ \ \ —\ total\ horizontal\ distance\ from\ launch\ \[m\]\
-\ \ \ \ \ \ 'v_max'\ \ \ \ \ —\ maximum\ speed\ reached\ \[m/s\]\
-\ \ \ \ """\
-\ \ \ \ z\ \ \ \ \ =\ r\[:,\ 2\]\
-\ \ \ \ speed\ =\ np\.linalg\.norm\(v,\ axis=1\)\
-\
-\ \ \ \ idx_max\ \ \ =\ int\(np\.argmax\(z\)\)\
-\ \ \ \ z_max\ \ \ \ \ =\ float\(z\[idx_max\]\)\
-\ \ \ \ t_zmax\ \ \ \ =\ float\(t\[idx_max\]\)\
-\ \ \ \ t_flight\ \ =\ float\(t\[\-1\]\)\
-\ \ \ \ x_land\ \ \ \ =\ float\(r\[\-1,\ 0\]\)\
-\ \ \ \ y_land\ \ \ \ =\ float\(r\[\-1,\ 1\]\)\
-\ \ \ \ range_val\ =\ float\(np\.sqrt\(x_land\*\*2\ \+\ y_land\*\*2\)\)\
-\ \ \ \ v_max\ \ \ \ \ =\ float\(np\.max\(speed\)\)\
-\
-\ \ \ \ return\ \{\
-\ \ \ \ \ \ \ \ 'z_max'\ \ \ \ :\ z_max,\
-\ \ \ \ \ \ \ \ 't_zmax'\ \ \ :\ t_zmax,\
-\ \ \ \ \ \ \ \ 't_flight'\ :\ t_flight,\
-\ \ \ \ \ \ \ \ 'x_land'\ \ \ :\ x_land,\
-\ \ \ \ \ \ \ \ 'y_land'\ \ \ :\ y_land,\
-\ \ \ \ \ \ \ \ 'range'\ \ \ \ :\ range_val,\
-\ \ \ \ \ \ \ \ 'v_max'\ \ \ \ :\ v_max,\
-\ \ \ \ \}\
-\
-\
-def\ print_metrics\(metrics,\ label=""\):\
-\ \ \ \ """Print\ flight\ metrics\ in\ a\ formatted\ block\."""\
-\ \ \ \ sep\ =\ "="\ \*\ 55\
-\ \ \ \ print\(f"\n\{sep\}"\)\
-\ \ \ \ if\ label:\
-\ \ \ \ \ \ \ \ print\(f"\ \ \{label\}"\)\
-\ \ \ \ \ \ \ \ print\(sep\)\
-\ \ \ \ print\(f"\ \ Max\ altitude\ \ \ \ \ \ \ :\ \{metrics\['z_max'\]:>10\.2f\}\ m\ \ "\
-\ \ \ \ \ \ \ \ \ \ f"\(\{metrics\['z_max'\]/1000:\.3f\}\ km\)"\)\
-\ \ \ \ print\(f"\ \ Time\ at\ apogee\ \ \ \ \ :\ \{metrics\['t_zmax'\]:>10\.2f\}\ s"\)\
-\ \ \ \ print\(f"\ \ Max\ speed\ \ \ \ \ \ \ \ \ \ :\ \{metrics\['v_max'\]:>10\.2f\}\ m/s"\)\
-\ \ \ \ print\(f"\ \ Total\ flight\ time\ \ :\ \{metrics\['t_flight'\]:>10\.2f\}\ s"\)\
-\ \ \ \ print\(f"\ \ Landing\ \ x\ \(East\)\ \ :\ \{metrics\['x_land'\]:>10\.4f\}\ m"\)\
-\ \ \ \ print\(f"\ \ Landing\ \ y\ \(North\)\ :\ \{metrics\['y_land'\]:>10\.4f\}\ m"\)\
-\ \ \ \ print\(f"\ \ Horizontal\ range\ \ \ :\ \{metrics\['range'\]:>10\.4f\}\ m"\)\
-\ \ \ \ print\(sep\)\
-\
-\
-\#\ SECTION\ 6:\ PLOTTING\ STYLE\ AND\ FUNCTIONS\
-\
-\#\ colour\ palette\
-C_NAVY\ \ \ =\ '\#0D2B55'\ \ \ \#\ dark\ navy\ —\ main\ colour\
-C_BLUE\ \ \ =\ '\#2A6496'\ \ \ \#\ mid\ blue\
-C_LTBLUE\ =\ '\#5B9BD5'\ \ \ \#\ light\ blue\
-C_GOLD\ \ \ =\ '\#B07D2A'\ \ \ \#\ amber\ gold\ —\ accent\ for\ two\-series\ plots\
-C_GRID\ \ \ =\ '\#D0D8E4'\ \ \ \#\ grid\ lines\
-\
-\#\ global\ rcParams\
-plt\.rcParams\.update\(\{\
-\ \ \ \ \#\ Typography\
-\ \ \ \ 'font\.family'\ \ \ \ \ \ \ \ \ \ \ :\ 'serif',\
-\ \ \ \ 'font\.serif'\ \ \ \ \ \ \ \ \ \ \ \ :\ \['Times\ New\ Roman',\ 'DejaVu\ Serif'\],\
-\ \ \ \ 'font\.size'\ \ \ \ \ \ \ \ \ \ \ \ \ :\ 11,\
-\ \ \ \ 'axes\.titlesize'\ \ \ \ \ \ \ \ :\ 12,\
-\ \ \ \ 'axes\.titleweight'\ \ \ \ \ \ :\ 'bold',\
-\ \ \ \ 'axes\.labelsize'\ \ \ \ \ \ \ \ :\ 11,\
-\ \ \ \ 'axes\.titlecolor'\ \ \ \ \ \ \ :\ C_NAVY,\
-\ \ \ \ 'axes\.labelcolor'\ \ \ \ \ \ \ :\ C_NAVY,\
-\ \ \ \ \#\ Axes\ frame\ and\ background\
-\ \ \ \ 'axes\.linewidth'\ \ \ \ \ \ \ \ :\ 1\.2,\
-\ \ \ \ 'axes\.edgecolor'\ \ \ \ \ \ \ \ :\ C_NAVY,\
-\ \ \ \ 'axes\.facecolor'\ \ \ \ \ \ \ \ :\ 'white',\
-\ \ \ \ 'figure\.facecolor'\ \ \ \ \ \ :\ 'white',\
-\ \ \ \ \#\ Grid\
-\ \ \ \ 'axes\.grid'\ \ \ \ \ \ \ \ \ \ \ \ \ :\ True,\
-\ \ \ \ 'grid\.color'\ \ \ \ \ \ \ \ \ \ \ \ :\ C_GRID,\
-\ \ \ \ 'grid\.linewidth'\ \ \ \ \ \ \ \ :\ 0\.7,\
-\ \ \ \ 'grid\.alpha'\ \ \ \ \ \ \ \ \ \ \ \ :\ 1\.0,\
-\ \ \ \ \#\ Tick\ marks\ \(inward,\ navy\ coloured\)\
-\ \ \ \ 'xtick\.color'\ \ \ \ \ \ \ \ \ \ \ :\ C_NAVY,\
-\ \ \ \ 'ytick\.color'\ \ \ \ \ \ \ \ \ \ \ :\ C_NAVY,\
-\ \ \ \ 'xtick\.labelsize'\ \ \ \ \ \ \ :\ 10,\
-\ \ \ \ 'ytick\.labelsize'\ \ \ \ \ \ \ :\ 10,\
-\ \ \ \ 'xtick\.direction'\ \ \ \ \ \ \ :\ 'in',\
-\ \ \ \ 'ytick\.direction'\ \ \ \ \ \ \ :\ 'in',\
-\ \ \ \ 'xtick\.major\.width'\ \ \ \ \ :\ 1\.0,\
-\ \ \ \ 'ytick\.major\.width'\ \ \ \ \ :\ 1\.0,\
-\ \ \ \ \#\ Legend\
-\ \ \ \ 'legend\.framealpha'\ \ \ \ \ :\ 0\.95,\
-\ \ \ \ 'legend\.edgecolor'\ \ \ \ \ \ :\ C_GRID,\
-\ \ \ \ 'legend\.fontsize'\ \ \ \ \ \ \ :\ 10,\
-\ \ \ \ 'legend\.title_fontsize'\ :\ 10,\
-\ \ \ \ \#\ Lines\
-\ \ \ \ 'lines\.linewidth'\ \ \ \ \ \ \ :\ 2\.0,\
-\ \ \ \ \#\ Output\ resolution\
-\ \ \ \ 'figure\.dpi'\ \ \ \ \ \ \ \ \ \ \ \ :\ 110,\
-\}\)\
-\
-\
-def\ _style_fig\(fig,\ title\):\
-\ \ \ \ """Set\ figure\ suptitle\."""\
-\ \ \ \ fig\.suptitle\(title,\ fontsize=14,\ fontweight='bold',\ color=C_NAVY\)\
-\
-\
-def\ _style_ax\(ax,\ title,\ xlabel,\ ylabel\):\
-\ \ \ \ """Apply\ title,\ axis\ labels\ and\ spine\ colour\."""\
-\ \ \ \ ax\.set_title\(title\)\
-\ \ \ \ ax\.set_xlabel\(xlabel\)\
-\ \ \ \ ax\.set_ylabel\(ylabel\)\
-\ \ \ \ for\ spine\ in\ ax\.spines\.values\(\):\
-\ \ \ \ \ \ \ \ spine\.set_edgecolor\(C_NAVY\)\
-\ \ \ \ \ \ \ \ spine\.set_linewidth\(1\.2\)\
-\ \ \ \ ax\.tick_params\(colors=C_NAVY,\ which='both'\)\
-\
-\
-def\ plot_base_results\(t,\ r,\ v,\ drag,\ title="Base\ Case"\):\
-\ \ \ \ """\
-\ \ \ \ 4\-panel\ interactive\ figure:\ altitude,\ horizontal\ projection,\ speed,\ drag\.\
-\ \ \ \ Controls:\ time\ slider,\ click\ on\ any\ panel,\ or\ type\ a\ value\ in\ the\ text\ boxes\.\
-\ \ \ \ All\ inputs\ stay\ in\ sync\.\ Tick\ labels\ that\ overlap\ the\ floating\ value\ label\
-\ \ \ \ are\ temporarily\ hidden\.\
-\ \ \ \ """\
-\ \ \ \ from\ matplotlib\.widgets\ import\ TextBox\
-\ \ \ \ from\ matplotlib\.lines\ \ import\ Line2D\
-\
-\ \ \ \ z\ \ \ \ \ =\ r\[:,\ 2\]\ /\ 1000\.0\
-\ \ \ \ xp\ \ \ \ =\ r\[:,\ 0\]\
-\ \ \ \ yp\ \ \ \ =\ r\[:,\ 1\]\
-\ \ \ \ speed\ =\ np\.linalg\.norm\(v,\ axis=1\)\
-\
-\ \ \ \ \#\ \(xdata,\ ydata,\ x\-label,\ y\-label,\ panel\ title,\ y\-box\ label\)\
-\ \ \ \ pdata\ =\ \[\
-\ \ \ \ \ \ \ \ \(t,\ \ z,\ \ \ \ \ "Time\ \[s\]",\ \ \ \ \ \ "Altitude\ \[km\]",\ \ "Altitude\ vs\ Time",\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ "Altitude\ \[km\]"\),\
-\ \ \ \ \ \ \ \ \(xp,\ yp,\ \ \ \ "x\ —\ East\ \[m\]",\ "y\ —\ North\ \[m\]",\ "Horizontal\ Projection\ \(y\ vs\ x\)",\ "y\ North\ \[m\]"\),\
-\ \ \ \ \ \ \ \ \(t,\ \ speed,\ "Time\ \[s\]",\ \ \ \ \ \ "Speed\ \[m/s\]",\ \ \ \ "Speed\ vs\ Time",\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ "Speed\ \[m/s\]"\),\
-\ \ \ \ \ \ \ \ \(t,\ \ drag,\ \ "Time\ \[s\]",\ \ \ \ \ \ "Drag\ force\ \[N\]",\ "Aerodynamic\ Drag\ vs\ Time",\ \ \ \ \ \ \ "Drag\ \[N\]"\),\
-\ \ \ \ \]\
-\ \ \ \ time_based\ =\ \[True,\ False,\ True,\ True\]\ \ \ \#\ True\ \ →\ x\-axis\ is\ time;\ find\ by\ x\-coord\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \#\ False\ →\ 2\-D\ curve;\ \ \ \ \ \ find\ by\ distance\
-\
-\ \ \ \ \#\ bottom=0\.22\ clears\ the\ slider;\ text\ boxes\ sit\ inline\ with\ the\ x\-axis\ labels\
-\ \ \ \ fig\ =\ plt\.figure\(figsize=\(14,\ 12\)\)\
-\ \ \ \ gs\ \ =\ fig\.add_gridspec\(2,\ 2,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ left=0\.09,\ right=0\.96,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ bottom=0\.22,\ top=0\.93,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ hspace=0\.50,\ wspace=0\.40\)\
-\ \ \ \ axs\ =\ \[fig\.add_subplot\(gs\[i\ //\ 2,\ i\ %\ 2\]\)\ for\ i\ in\ range\(4\)\]\
-\ \ \ \ _style_fig\(fig,\ title\)\
-\
-\ \ \ \ \#\ static\ curves\
-\ \ \ \ for\ ax,\ \(xd,\ yd,\ xl,\ yl,\ ttl,\ _\)\ in\ zip\(axs,\ pdata\):\
-\ \ \ \ \ \ \ \ ax\.plot\(xd,\ yd,\ color=C_NAVY,\ zorder=2\)\
-\ \ \ \ \ \ \ \ _style_ax\(ax,\ ttl,\ xl,\ yl\)\
-\ \ \ \ axs\[1\]\.set_aspect\('equal',\ adjustable='datalim'\)\
-\ \ \ \ fig\.canvas\.draw\(\)\ \ \ \ \#\ finalise\ axis\ limits\ before\ placing\ dynamic\ elements\
-\
-\ \ \ \ \#\ separator\ above\ slider\
-\ \ \ \ fig\.add_artist\(Line2D\(\[0\.04,\ 0\.96\],\ \[0\.128,\ 0\.128\],\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ transform=fig\.transFigure,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ color=C_GRID,\ linewidth=0\.9,\ zorder=0\)\)\
-\
-\ \ \ \ \#\ dynamic\ overlay:\ dot\ \+\ crosshair\ \+\ floating\ value\ labels\
-\ \ \ \ CH_KW\ =\ dict\(color='\#B8B8B8',\ linewidth=0\.8,\ linestyle='\-',\ zorder=3,\ clip_on=True\)\
-\ \ \ \ LBL_X\ =\ dict\(fontsize=8\.5,\ color='\#222222',\ clip_on=False,\ fontfamily='serif',\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ ha='center',\ va='top',\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ bbox=dict\(boxstyle='round,pad=0\.2',\ fc='white',\ ec='none',\ alpha=0\.92\)\)\
-\ \ \ \ LBL_Y\ =\ dict\(fontsize=8\.5,\ color='\#222222',\ clip_on=False,\ fontfamily='serif',\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ ha='right',\ va='center',\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ bbox=dict\(boxstyle='round,pad=0\.2',\ fc='white',\ ec='none',\ alpha=0\.92\)\)\
-\
-\ \ \ \ dots,\ vls,\ hls,\ xlbls,\ ylbls\ =\ \[\],\ \[\],\ \[\],\ \[\],\ \[\]\
-\ \ \ \ for\ ax,\ \(xd,\ yd,\ \*_\)\ in\ zip\(axs,\ pdata\):\
-\ \ \ \ \ \ \ \ xlim\ =\ ax\.get_xlim\(\);\ ylim\ =\ ax\.get_ylim\(\)\
-\ \ \ \ \ \ \ \ xi,\ yi\ =\ xd\[0\],\ yd\[0\]\
-\ \ \ \ \ \ \ \ dot,\ =\ ax\.plot\(\[xi\],\ \[yi\],\ 'o',\ color=C_NAVY,\ markersize=6,\ zorder=6\)\
-\ \ \ \ \ \ \ \ vl,\ \ =\ ax\.plot\(\[xi,\ xi\],\ \ \ \ \ \ \[ylim\[0\],\ yi\],\ \*\*CH_KW\)\
-\ \ \ \ \ \ \ \ hl,\ \ =\ ax\.plot\(\[xlim\[0\],\ xi\],\ \[yi,\ \ \ \ \ \ yi\],\ \*\*CH_KW\)\
-\ \ \ \ \ \ \ \ lx\ \ \ =\ ax\.text\(xi,\ \ \ \ \ \ ylim\[0\],\ f'\{xi:\.4g\}',\ \*\*LBL_X\)\
-\ \ \ \ \ \ \ \ ly\ \ \ =\ ax\.text\(xlim\[0\],\ yi,\ \ \ \ \ \ f'\{yi:\.4g\}',\ \*\*LBL_Y\)\
-\ \ \ \ \ \ \ \ dots\.append\(dot\);\ vls\.append\(vl\);\ hls\.append\(hl\)\
-\ \ \ \ \ \ \ \ xlbls\.append\(lx\);\ ylbls\.append\(ly\)\
-\
-\ \ \ \ hidden_ticks\ =\ \[\]\
-\
-\ \ \ \ def\ _hide_overlapping\(ax,\ txt,\ which\):\
-\ \ \ \ \ \ \ \ renderer\ =\ fig\.canvas\.get_renderer\(\)\
-\ \ \ \ \ \ \ \ try:\
-\ \ \ \ \ \ \ \ \ \ \ \ bb\ =\ txt\.get_window_extent\(renderer\)\.expanded\(1\.1,\ 1\.6\)\
-\ \ \ \ \ \ \ \ except\ Exception:\
-\ \ \ \ \ \ \ \ \ \ \ \ return\ \[\]\
-\ \ \ \ \ \ \ \ ticks\ =\ ax\.get_xticklabels\(\)\ if\ which\ ==\ 'x'\ else\ ax\.get_yticklabels\(\)\
-\ \ \ \ \ \ \ \ hidden\ =\ \[\]\
-\ \ \ \ \ \ \ \ for\ tl\ in\ ticks:\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ not\ tl\.get_visible\(\):\ continue\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ bb\.overlaps\(tl\.get_window_extent\(renderer\)\):\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ tl\.set_visible\(False\);\ hidden\.append\(tl\)\
-\ \ \ \ \ \ \ \ return\ hidden\
-\
-\ \ \ \ \#\ styled\ text\-box\ factory\
-\ \ \ \ def\ _textbox\(pos,\ initial\):\
-\ \ \ \ \ \ \ \ ax_tb\ =\ fig\.add_axes\(pos\)\
-\ \ \ \ \ \ \ \ ax_tb\.set_facecolor\('white'\)\
-\ \ \ \ \ \ \ \ for\ sp\ in\ ax_tb\.spines\.values\(\):\
-\ \ \ \ \ \ \ \ \ \ \ \ sp\.set_edgecolor\(C_NAVY\);\ sp\.set_linewidth\(0\.9\)\
-\ \ \ \ \ \ \ \ tb\ =\ TextBox\(ax_tb,\ '',\ initial=str\(initial\)\)\
-\ \ \ \ \ \ \ \ tb\.text_disp\.set_fontfamily\('serif'\)\
-\ \ \ \ \ \ \ \ tb\.text_disp\.set_color\(C_NAVY\)\
-\ \ \ \ \ \ \ \ tb\.text_disp\.set_fontsize\(9\)\
-\ \ \ \ \ \ \ \ return\ tb\
-\
-\ \ \ \ \#\ slider\
-\ \ \ \ ax_sl\ =\ fig\.add_axes\(\[0\.09,\ 0\.090,\ 0\.57,\ 0\.022\]\)\
-\ \ \ \ ax_sl\.set_facecolor\('white'\)\
-\ \ \ \ for\ sp\ in\ ax_sl\.spines\.values\(\):\ sp\.set_edgecolor\(C_GRID\)\
-\ \ \ \ slider\ =\ Slider\(ax_sl,\ 'Time\ \ \[s\]',\ float\(t\[0\]\),\ float\(t\[\-1\]\),\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ valinit=float\(t\[0\]\),\ color=C_NAVY\)\
-\ \ \ \ slider\.label\.set_fontfamily\('serif'\);\ slider\.label\.set_color\(C_NAVY\)\
-\ \ \ \ slider\.valtext\.set_visible\(False\)\ \ \ \#\ value\ shown\ in\ the\ TextBox\ instead\
-\
-\ \ \ \ \#\ time\ text\ box\ \(right\ of\ slider\)\
-\ \ \ \ fig\.text\(0\.678,\ 0\.101,\ 't\ \[s\]:',\ ha='right',\ va='center',\
-\ \ \ \ \ \ \ \ \ \ \ \ \ fontfamily='serif',\ fontsize=9,\ color=C_NAVY\)\
-\ \ \ \ t_box\ =\ _textbox\(\[0\.682,\ 0\.084,\ 0\.090,\ 0\.033\],\ f'\{t\[0\]:\.4g\}'\)\
-\
-\ \ \ \ \#\ y\-value\ text\ boxes,\ one\ per\ panel\ \(inline\ with\ x\-axis\ label\)\
-\ \ \ \ renderer\ =\ fig\.canvas\.get_renderer\(\)\
-\ \ \ \ fig_inv\ \ =\ fig\.transFigure\.inverted\(\)\
-\ \ \ \ BOX_H\ =\ 0\.024;\ \ BOX_W_FRAC\ =\ 0\.20;\ \ Y_OFFSET\ =\ 0\.058\
-\ \ \ \ y_boxes\ =\ \[\]\
-\ \ \ \ for\ i,\ \(ax,\ \(_,\ yd,\ \*_\)\)\ in\ enumerate\(zip\(axs,\ pdata\)\):\
-\ \ \ \ \ \ \ \ pos\ \ \ \ \ =\ ax\.get_position\(\)\
-\ \ \ \ \ \ \ \ xlbl_bb\ =\ ax\.xaxis\.label\.get_window_extent\(renderer\)\
-\ \ \ \ \ \ \ \ lbl_cy\ \ =\ pos\.y0\ \-\ Y_OFFSET\
-\ \ \ \ \ \ \ \ lbl_x\ \ \ =\ fig_inv\.transform\(\(xlbl_bb\.x1,\ 0\)\)\[0\]\ \+\ 0\.025\
-\ \ \ \ \ \ \ \ by\ \ =\ lbl_cy\ \-\ BOX_H\ /\ 2\
-\ \ \ \ \ \ \ \ bw\ \ =\ pos\.width\ \*\ BOX_W_FRAC\
-\ \ \ \ \ \ \ \ bx\ \ =\ pos\.x1\ \-\ bw\ \-\ 0\.006\ \ \ \ \ \ \ \ \ \ \ \#\ flush\ to\ panel\ right\ edge\
-\ \ \ \ \ \ \ \ fig\.text\(lbl_x,\ lbl_cy,\ pdata\[i\]\[5\],\ ha='left',\ va='center',\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ fontfamily='serif',\ fontsize=8\.5,\ color=C_NAVY,\ fontweight='bold'\)\
-\ \ \ \ \ \ \ \ y_boxes\.append\(_textbox\(\[bx,\ by,\ bw,\ BOX_H\],\ f'\{yd\[0\]:\.4g\}'\)\)\
-\
-\ \ \ \ \#\ re\-entrant\ guard:\ set_val\ can\ trigger\ submit,\ which\ would\ loop\
-\ \ \ \ _lock\ =\ \[False\]\
-\
-\ \ \ \ def\ update\(_\):\
-\ \ \ \ \ \ \ \ if\ _lock\[0\]:\ return\
-\ \ \ \ \ \ \ \ _lock\[0\]\ =\ True\
-\ \ \ \ \ \ \ \ try:\
-\ \ \ \ \ \ \ \ \ \ \ \ for\ tl\ in\ hidden_ticks:\ tl\.set_visible\(True\)\
-\ \ \ \ \ \ \ \ \ \ \ \ hidden_ticks\.clear\(\)\
-\
-\ \ \ \ \ \ \ \ \ \ \ \ idx\ =\ int\(np\.argmin\(np\.abs\(t\ \-\ slider\.val\)\)\)\
-\
-\ \ \ \ \ \ \ \ \ \ \ \ for\ i,\ \(ax,\ \(xd,\ yd,\ \*_\)\)\ in\ enumerate\(zip\(axs,\ pdata\)\):\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ xlim\ =\ ax\.get_xlim\(\);\ ylim\ =\ ax\.get_ylim\(\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ xi,\ yi\ =\ xd\[idx\],\ yd\[idx\]\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ dots\[i\]\.set_data\(\[xi\],\ \[yi\]\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ vls\[i\]\.set_data\(\[xi,\ xi\],\ \ \ \ \ \ \[ylim\[0\],\ yi\]\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ hls\[i\]\.set_data\(\[xlim\[0\],\ xi\],\ \[yi,\ \ \ \ \ \ yi\]\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ xlbls\[i\]\.set_position\(\(xi,\ \ \ \ \ \ ylim\[0\]\)\);\ xlbls\[i\]\.set_text\(f'\{xi:\.4g\}'\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ ylbls\[i\]\.set_position\(\(xlim\[0\],\ yi\)\);\ \ \ \ \ \ ylbls\[i\]\.set_text\(f'\{yi:\.4g\}'\)\
-\
-\ \ \ \ \ \ \ \ \ \ \ \ \#\ Keep\ all\ text\ inputs\ in\ sync\ with\ the\ current\ time\ index\
-\ \ \ \ \ \ \ \ \ \ \ \ t_box\.set_val\(f'\{t\[idx\]:\.4g\}'\)\
-\ \ \ \ \ \ \ \ \ \ \ \ for\ i,\ \(yb,\ \(_,\ yd,\ \*_\)\)\ in\ enumerate\(zip\(y_boxes,\ pdata\)\):\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ yb\.set_val\(f'\{yd\[idx\]:\.4g\}'\)\
-\
-\ \ \ \ \ \ \ \ \ \ \ \ fig\.canvas\.draw\(\)\
-\ \ \ \ \ \ \ \ \ \ \ \ for\ i,\ ax\ in\ enumerate\(axs\):\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ hidden_ticks\.extend\(_hide_overlapping\(ax,\ xlbls\[i\],\ 'x'\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ hidden_ticks\.extend\(_hide_overlapping\(ax,\ ylbls\[i\],\ 'y'\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ fig\.canvas\.draw_idle\(\)\
-\ \ \ \ \ \ \ \ finally:\
-\ \ \ \ \ \ \ \ \ \ \ \ _lock\[0\]\ =\ False\
-\
-\ \ \ \ def\ on_time_submit\(text\):\
-\ \ \ \ \ \ \ \ try:\
-\ \ \ \ \ \ \ \ \ \ \ \ t_val\ =\ float\(text\.strip\(\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ slider\.set_val\(np\.clip\(t_val,\ float\(t\[0\]\),\ float\(t\[\-1\]\)\)\)\
-\ \ \ \ \ \ \ \ except\ ValueError:\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ not\ _lock\[0\]:\ t_box\.set_val\(f'\{slider\.val:\.4g\}'\)\ \ \#\ restore\ on\ bad\ input\
-\
-\ \ \ \ def\ on_y_submit\(text,\ panel_idx\):\
-\ \ \ \ \ \ \ \ _,\ yd\ =\ pdata\[panel_idx\]\[:2\]\
-\ \ \ \ \ \ \ \ try:\
-\ \ \ \ \ \ \ \ \ \ \ \ y_val\ =\ float\(text\.strip\(\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ idx\ \ \ =\ int\(np\.argmin\(np\.abs\(yd\ \-\ y_val\)\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ slider\.set_val\(float\(t\[idx\]\)\)\
-\ \ \ \ \ \ \ \ except\ ValueError:\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ not\ _lock\[0\]:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ cur\ =\ int\(np\.argmin\(np\.abs\(t\ \-\ slider\.val\)\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ y_boxes\[panel_idx\]\.set_val\(f'\{yd\[cur\]:\.4g\}'\)\ \ \#\ restore\ on\ bad\ input\
-\
-\ \ \ \ def\ on_click\(event\):\
-\ \ \ \ \ \ \ \ if\ event\.button\ !=\ 1\ or\ event\.inaxes\ is\ None:\ return\
-\ \ \ \ \ \ \ \ for\ i,\ ax\ in\ enumerate\(axs\):\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ event\.inaxes\ is\ ax:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ xd,\ yd\ =\ pdata\[i\]\[:2\]\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ if\ not\ time_based\[i\]:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \#\ spatial\ panel:\ nearest\ point\ by\ normalised\ 2D\ distance\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ xr\ =\ max\(float\(np\.ptp\(xd\)\),\ 1e\-10\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ yr\ =\ max\(float\(np\.ptp\(yd\)\),\ 1e\-10\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ dist2\ =\ \(\(xd\ \-\ event\.xdata\)\ /\ xr\)\ \*\*\ 2\ \+\ \\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \(\(yd\ \-\ event\.ydata\)\ /\ yr\)\ \*\*\ 2\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ idx\ =\ int\(np\.argmin\(dist2\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ else:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ idx\ =\ int\(np\.argmin\(np\.abs\(xd\ \-\ event\.xdata\)\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ slider\.set_val\(float\(t\[idx\]\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ break\
-\
-\ \ \ \ t_box\.on_submit\(on_time_submit\)\
-\ \ \ \ for\ i,\ yb\ in\ enumerate\(y_boxes\):\
-\ \ \ \ \ \ \ \ yb\.on_submit\(lambda\ text,\ i=i:\ on_y_submit\(text,\ i\)\)\
-\ \ \ \ fig\.canvas\.mpl_connect\('button_press_event',\ on_click\)\
-\ \ \ \ slider\.on_changed\(update\)\
-\
-\ \ \ \ update\(None\)\
-\ \ \ \ plt\.show\(\)\
-\
-\
-\#\ SECTION\ 7:\ MAIN\ EXECUTION\
-\
-if\ __name__\ ==\ "__main__":\
-\
-\ \ \ \ \#\ 7\.0\ base\ case\ —\ default\ parameters,\ ISA\ atmosphere,\ Coriolis\ ON\
-\
-\ \ \ \ print\("\n"\ \+\ "="\ \*\ 55\)\
-\ \ \ \ print\("\ \ 3D\ ROCKET\ TRAJECTORY\ SIMULATION"\)\
-\ \ \ \ print\("="\ \*\ 55\)\
-\ \ \ \ print\(f"\ \ Thrust\ \ \ \ \ \ \ \ :\ \{T0\}\ N"\)\
-\ \ \ \ print\(f"\ \ Isp\ \ \ \ \ \ \ \ \ \ \ :\ \{ISP\}\ s"\)\
-\ \ \ \ print\(f"\ \ m0\ \ \ \ \ \ \ \ \ \ \ \ :\ \{M0\}\ kg\ \ \ \(mp\ =\ \{MP\}\ kg\ payload\)"\)\
-\ \ \ \ print\(f"\ \ Propellant\ \ \ \ :\ \{M0\ \-\ MP:\.1f\}\ kg"\)\
-\ \ \ \ mdot_base\ =\ T0\ /\ \(G0\ \*\ ISP\)\
-\ \ \ \ tburn_base\ =\ \(M0\ \-\ MP\)\ /\ mdot_base\
-\ \ \ \ print\(f"\ \ Mass\ flow\ \ \ \ \ :\ \{mdot_base:\.4f\}\ kg/s"\)\
-\ \ \ \ print\(f"\ \ Burn\ time\ \ \ \ \ :\ \{tburn_base:\.2f\}\ s"\)\
-\ \ \ \ print\(f"\ \ Atmosphere\ \ \ \ :\ ISA\ \(multi\-layer\)"\)\
-\ \ \ \ print\(f"\ \ Earth\ omega\ \ \ :\ \{OMEGA_EARTH:\.2e\}\ rad/s"\)\
-\ \ \ \ print\("="\ \*\ 55\)\
-\
-\ \ \ \ print\("\n>>>\ Running\ base\ case\ simulation\.\.\."\)\
-\ \ \ \ t0,\ r0,\ v0,\ drag0,\ mass0,\ accel0\ =\ simulate_rocket\(\)\
-\
-\ \ \ \ metrics0\ =\ compute_metrics\(t0,\ r0,\ v0\)\
-\ \ \ \ print_metrics\(metrics0,\ "BASE\ CASE\ \ \(T=1500\ N,\ ISA,\ Coriolis\ ON\)"\)\
-\ \ \ \ plot_base_results\(t0,\ r0,\ v0,\ drag0,\ title="Base\ Case\ —\ T=1500\ N,\ ISA\ Atmosphere,\ Coriolis\ ON"\)\
+"""
+3D rocket trajectory simulation — explicit Euler integration.
+Authors: Rubén Praena, Claudia Ros, Antoni Ruiz, Miguel Sanz,
+         Elishka Mrázek, Joel García, Giulia Latorre
+
+Frame: x = East, y = North, z = Up (equatorial surface, local inertial).
+Forces: gravity g(z)=GM/(R+z)², drag F_D=-½CdAρ|v|v, thrust T·ẑ, Coriolis -2ω×v.
+Euler: r_{n+1} = r_n + v_n·dt,  v_{n+1} = v_n + a_n·dt,  m_{n+1} = m_n - ṁ·dt
+"""
+
+import sys
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.widgets import Slider
+
+# Force UTF-8 on stdout/stderr so matplotlib font warnings don't crash on Windows
+# (the default Windows console uses cp1252 which cannot encode characters like em-dash)
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+
+
+# SECTION 1: PHYSICAL AND EARTH CONSTANTS
+
+GM          = 3.99e14     # m³/s²   — Earth's gravitational parameter
+R_EARTH     = 6.378e6    # m       — Earth's mean radius
+G0          = 9.80665    # m/s²    — standard gravity at surface (used for mass flow rate)
+OMEGA_EARTH = 7.27e-5    # rad/s   — Earth's angular velocity
+
+
+
+# SECTION 2: DEFAULT ROCKET PARAMETERS
+
+M0   = 100.0   # kg   — initial total mass  (structure + propellant + payload)
+MP   = 10.0    # kg   — payload/structural mass that remains after burnout
+T0   = 1500.0  # N    — nominal thrust
+ISP  = 100.0   # s    — specific impulse  (low value → low fuel efficiency)
+CD   = 0.5     # —    — drag coefficient  (dimensionless)
+AREF = 0.1     # m²   — rocket cross-sectional reference area
+
+
+# SECTION 3: ATMOSPHERIC DENSITY MODELS
+
+# density_isa: multi-layer ISA model, used by default.
+# density_exponential: ρ₀·exp(-z/H), used in 4_3_Drag.py for comparison.
+# Note: ISA has a slope discontinuity at each layer boundary (kink in the lapse rate).
+
+
+# ISA atmospheric constants
+RHO0    = 1.225    # kg/m³     — sea-level density
+H_SCALE = 8500.0   # m         — exponential scale height
+T0_ISA  = 288.15   # K         — sea-level temperature
+L_TROP  = 0.0065   # K/m       — troposphere lapse rate (temperature drop per metre)
+R_AIR   = 287.05   # J/(kg·K)  — specific gas constant for dry air
+
+
+def density_isa(z):
+    """
+    ISA air density [kg/m³] at altitude z [m].
+    Layers: troposphere 0-11 km, lower stratosphere 11-20 km (isothermal at 216.65 K),
+    upper stratosphere 20-32 km, mesosphere 32-51 km, thermosphere 51-85 km,
+    exponential fallback above 85 km. Returns at least 1e-20.
+    """
+    z_km = z / 1000.0
+
+    if z_km < 11:                              # Troposphere
+        T = T0_ISA - L_TROP * z
+        p = 101325.0 * (T / T0_ISA) ** (G0 / (L_TROP * R_AIR))
+
+    elif z_km < 20:                            # Lower stratosphere (isothermal)
+        T = 216.65
+        p = 22632.1 * np.exp(-G0 * (z - 11000) / (R_AIR * T))
+
+    elif z_km < 32:                            # Upper stratosphere
+        T     = 216.65 + 0.001 * (z - 20000)
+        T_avg = (216.65 + T) / 2.0            # average T over the layer (for integration)
+        p     = 5474.89 * np.exp(-G0 * (z - 20000) / (R_AIR * T_avg))
+
+    elif z_km < 47:                            # Lower mesosphere
+        T     = 228.65 + 0.0028 * (z - 32000)
+        T_avg = (228.65 + T) / 2.0
+        p     = 868.02 * np.exp(-G0 * (z - 32000) / (R_AIR * T_avg))
+
+    elif z_km < 51:                            # Upper mesosphere (isothermal)
+        T = 270.65
+        p = 110.91 * np.exp(-G0 * (z - 47000) / (R_AIR * T))
+
+    elif z_km < 71:                            # Lower thermosphere
+        T     = 270.65 + 0.0028 * (z - 51000)
+        T_avg = (270.65 + T) / 2.0
+        p     = 66.939 * np.exp(-G0 * (z - 51000) / (R_AIR * T_avg))
+
+    elif z_km < 85:                            # Upper thermosphere
+        T     = 270.65 + 0.002 * (z - 71000)
+        T_avg = (270.65 + T) / 2.0
+        p     = 3.9564 * np.exp(-G0 * (z - 71000) / (R_AIR * T_avg))
+
+    else:                                      # Above 85 km: exponential falloff
+        return max(1.5e-5 * np.exp(-(z - 85000) / 6000.0), 1e-20)
+
+    rho = p / (R_AIR * T)
+    return max(rho, 1e-20)                     # never return exactly zero
+
+
+def density_exponential(z):
+    """Single-exponential model: ρ(z) = ρ₀·exp(−z/H), H = 8500 m."""
+    return RHO0 * np.exp(-z / H_SCALE)
+
+
+# SECTION 4: EULER INTEGRATION
+
+def simulate_rocket(
+    thrust        = T0,
+    omega         = OMEGA_EARTH,
+    density_func  = density_isa,
+    m_propellant  = M0 - MP,    # kg — propellant mass (default: 90 kg)
+    dt            = 0.1,         # s  — Euler time step
+):
+
+
+    # --- derived burn parameters ---
+    m_initial = MP + m_propellant              # total initial mass [kg]
+    mdot      = thrust / (G0 * ISP)           # mass flow rate  ṁ = T / (g₀ · Isp)  [kg/s]
+    t_burn    = m_propellant / mdot            # burn-out time  [s]
+
+    # --- Earth's rotation vector: ω⃗ = ω ŷ at the equator ---
+    #     (the rotation axis points toward geographic North = +y direction)
+    omega_vec = np.array([0.0, omega, 0.0])
+
+    # --- initial state ---
+    r = np.array([0.0, 0.0, 0.0])    # position [m]
+    v = np.array([0.0, 0.0, 0.0])    # velocity [m/s]
+    m = m_initial                      # current mass [kg]
+    t = 0.0                            # elapsed time [s]
+
+    # --- history lists (converted to arrays on return) ---
+    t_arr     = [t]
+    r_arr     = [r.copy()]
+    v_arr     = [v.copy()]
+    drag_arr  = [0.0]
+    mass_arr  = [m]
+    accel_arr = [0.0]
+
+    launched = False    # becomes True once z > 0 for the first time
+
+    while True:
+        z = r[2]   # current altitude [m]
+
+        # --- termination: rocket has hit the ground after liftoff ---
+        if launched and z < 0.0:
+            break
+
+        # Clamp altitude for physics evaluation (density/gravity below ground = sea level)
+        z_eff = max(z, 0.0)
+
+        # gravity — decreases with altitude
+        g_mag  = GM / (R_EARTH + z_eff) ** 2
+        a_grav = np.array([0.0, 0.0, -g_mag])
+
+        # thrust — vertical, active while propellant remains
+        if t < t_burn:
+            a_thrust = np.array([0.0, 0.0, thrust / m])
+            m_next   = max(m - mdot * dt, MP)   # clamp so mass never drops below MP
+        else:
+            a_thrust = np.zeros(3)
+            m_next   = MP
+
+        # drag — F_D = -½ Cd A ρ |v| v
+        rho   = density_func(z_eff)
+        v_mag = np.linalg.norm(v)
+
+        if v_mag > 0.0:
+            F_drag = -0.5 * CD * AREF * rho * v_mag * v
+        else:
+            F_drag = np.zeros(3)
+
+        a_drag = F_drag / m
+
+        # Coriolis: -2ω×v; upward motion deflects west at the equator
+        a_coriolis = -2.0 * np.cross(omega_vec, v)
+
+        a = a_grav + a_thrust + a_drag + a_coriolis
+
+        # Euler: r uses velocity from the current step, not the updated one
+        r_new = r + v * dt
+        v_new = v + a * dt
+
+        # --- advance state ---
+        r = r_new
+        v = v_new
+        m = m_next
+        t += dt
+
+        # --- detect liftoff ---
+        if not launched and r[2] > 0.0:
+            launched = True
+
+        # --- store step ---
+        t_arr.append(t)
+        r_arr.append(r.copy())
+        v_arr.append(v.copy())
+        drag_arr.append(np.linalg.norm(F_drag))
+        mass_arr.append(m)
+        accel_arr.append(np.linalg.norm(a))
+
+    return (
+        np.array(t_arr),
+        np.array(r_arr),
+        np.array(v_arr),
+        np.array(drag_arr),
+        np.array(mass_arr),
+        np.array(accel_arr),
+    )
+
+
+# SECTION 5: POST-PROCESSING UTILITIES
+
+def compute_metrics(t, r, v):
+    """
+    Extract key flight performance metrics from simulation arrays.
+
+    Parameters
+    ----------
+    t : (N,)   time array [s]
+    r : (N,3)  position array [m]
+    v : (N,3)  velocity array [m/s]
+
+    Returns
+    -------
+    dict with keys:
+      'z_max'     — maximum altitude reached [m]
+      't_zmax'    — time at which z_max is reached [s]
+      't_flight'  — total flight duration [s]
+      'x_land'    — East displacement at landing [m]
+      'y_land'    — North displacement at landing [m]
+      'range'     — total horizontal distance from launch [m]
+      'v_max'     — maximum speed reached [m/s]
+    """
+    z     = r[:, 2]
+    speed = np.linalg.norm(v, axis=1)
+
+    idx_max   = int(np.argmax(z))
+    z_max     = float(z[idx_max])
+    t_zmax    = float(t[idx_max])
+    t_flight  = float(t[-1])
+    x_land    = float(r[-1, 0])
+    y_land    = float(r[-1, 1])
+    range_val = float(np.sqrt(x_land**2 + y_land**2))
+    v_max     = float(np.max(speed))
+
+    return {
+        'z_max'    : z_max,
+        't_zmax'   : t_zmax,
+        't_flight' : t_flight,
+        'x_land'   : x_land,
+        'y_land'   : y_land,
+        'range'    : range_val,
+        'v_max'    : v_max,
+    }
+
+
+def print_metrics(metrics, label=""):
+    """Print flight metrics in a formatted block."""
+    sep = "=" * 55
+    print(f"\n{sep}")
+    if label:
+        print(f"  {label}")
+        print(sep)
+    print(f"  Max altitude       : {metrics['z_max']:>10.2f} m  "
+          f"({metrics['z_max']/1000:.3f} km)")
+    print(f"  Time at apogee     : {metrics['t_zmax']:>10.2f} s")
+    print(f"  Max speed          : {metrics['v_max']:>10.2f} m/s")
+    print(f"  Total flight time  : {metrics['t_flight']:>10.2f} s")
+    print(f"  Landing  x (East)  : {metrics['x_land']:>10.4f} m")
+    print(f"  Landing  y (North) : {metrics['y_land']:>10.4f} m")
+    print(f"  Horizontal range   : {metrics['range']:>10.4f} m")
+    print(sep)
+
+
+# SECTION 6: PLOTTING STYLE AND FUNCTIONS
+
+# colour palette
+C_NAVY   = '#0D2B55'   # dark navy — main colour
+C_BLUE   = '#2A6496'   # mid blue
+C_LTBLUE = '#5B9BD5'   # light blue
+C_GOLD   = '#B07D2A'   # amber gold — accent for two-series plots
+C_GRID   = '#D0D8E4'   # grid lines
+
+# global rcParams
+plt.rcParams.update({
+    # Typography
+    'font.family'           : 'serif',
+    'font.serif'            : ['Times New Roman', 'DejaVu Serif'],
+    'font.size'             : 11,
+    'axes.titlesize'        : 12,
+    'axes.titleweight'      : 'bold',
+    'axes.labelsize'        : 11,
+    'axes.titlecolor'       : C_NAVY,
+    'axes.labelcolor'       : C_NAVY,
+    # Axes frame and background
+    'axes.linewidth'        : 1.2,
+    'axes.edgecolor'        : C_NAVY,
+    'axes.facecolor'        : 'white',
+    'figure.facecolor'      : 'white',
+    # Grid
+    'axes.grid'             : True,
+    'grid.color'            : C_GRID,
+    'grid.linewidth'        : 0.7,
+    'grid.alpha'            : 1.0,
+    # Tick marks (inward, navy coloured)
+    'xtick.color'           : C_NAVY,
+    'ytick.color'           : C_NAVY,
+    'xtick.labelsize'       : 10,
+    'ytick.labelsize'       : 10,
+    'xtick.direction'       : 'in',
+    'ytick.direction'       : 'in',
+    'xtick.major.width'     : 1.0,
+    'ytick.major.width'     : 1.0,
+    # Legend
+    'legend.framealpha'     : 0.95,
+    'legend.edgecolor'      : C_GRID,
+    'legend.fontsize'       : 10,
+    'legend.title_fontsize' : 10,
+    # Lines
+    'lines.linewidth'       : 2.0,
+    # Output resolution
+    'figure.dpi'            : 110,
+})
+
+
+def _style_fig(fig, title):
+    """Set figure suptitle."""
+    fig.suptitle(title, fontsize=14, fontweight='bold', color=C_NAVY)
+
+
+def _style_ax(ax, title, xlabel, ylabel):
+    """Apply title, axis labels and spine colour."""
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    for spine in ax.spines.values():
+        spine.set_edgecolor(C_NAVY)
+        spine.set_linewidth(1.2)
+    ax.tick_params(colors=C_NAVY, which='both')
+
+
+def plot_base_results(t, r, v, drag, title="Base Case"):
+    """
+    4-panel interactive figure: altitude, horizontal projection, speed, drag.
+    Controls: time slider, click on any panel, or type a value in the text boxes.
+    All inputs stay in sync. Tick labels that overlap the floating value label
+    are temporarily hidden.
+    """
+    from matplotlib.widgets import TextBox
+    from matplotlib.lines  import Line2D
+
+    z     = r[:, 2] / 1000.0
+    xp    = r[:, 0]
+    yp    = r[:, 1]
+    speed = np.linalg.norm(v, axis=1)
+
+    # (xdata, ydata, x-label, y-label, panel title, y-box label)
+    pdata = [
+        (t,  z,     "Time [s]",      "Altitude [km]",  "Altitude vs Time",               "Altitude [km]"),
+        (xp, yp,    "x — East [m]", "y — North [m]", "Horizontal Projection (y vs x)", "y North [m]"),
+        (t,  speed, "Time [s]",      "Speed [m/s]",    "Speed vs Time",                  "Speed [m/s]"),
+        (t,  drag,  "Time [s]",      "Drag force [N]", "Aerodynamic Drag vs Time",       "Drag [N]"),
+    ]
+    time_based = [True, False, True, True]   # True  → x-axis is time; find by x-coord
+                                              # False → 2-D curve;      find by distance
+
+    # bottom=0.22 clears the slider; text boxes sit inline with the x-axis labels
+    fig = plt.figure(figsize=(14, 12))
+    gs  = fig.add_gridspec(2, 2,
+                           left=0.09, right=0.96,
+                           bottom=0.22, top=0.93,
+                           hspace=0.50, wspace=0.40)
+    axs = [fig.add_subplot(gs[i // 2, i % 2]) for i in range(4)]
+    _style_fig(fig, title)
+
+    # static curves
+    for ax, (xd, yd, xl, yl, ttl, _) in zip(axs, pdata):
+        ax.plot(xd, yd, color=C_NAVY, zorder=2)
+        _style_ax(ax, ttl, xl, yl)
+    axs[1].set_aspect('equal', adjustable='datalim')
+    fig.canvas.draw()    # finalise axis limits before placing dynamic elements
+
+    # separator above slider
+    fig.add_artist(Line2D([0.04, 0.96], [0.128, 0.128],
+                           transform=fig.transFigure,
+                           color=C_GRID, linewidth=0.9, zorder=0))
+
+    # dynamic overlay: dot + crosshair + floating value labels
+    CH_KW = dict(color='#B8B8B8', linewidth=0.8, linestyle='-', zorder=3, clip_on=True)
+    LBL_X = dict(fontsize=8.5, color='#222222', clip_on=False, fontfamily='serif',
+                 ha='center', va='top',
+                 bbox=dict(boxstyle='round,pad=0.2', fc='white', ec='none', alpha=0.92))
+    LBL_Y = dict(fontsize=8.5, color='#222222', clip_on=False, fontfamily='serif',
+                 ha='right', va='center',
+                 bbox=dict(boxstyle='round,pad=0.2', fc='white', ec='none', alpha=0.92))
+
+    dots, vls, hls, xlbls, ylbls = [], [], [], [], []
+    for ax, (xd, yd, *_) in zip(axs, pdata):
+        xlim = ax.get_xlim(); ylim = ax.get_ylim()
+        xi, yi = xd[0], yd[0]
+        dot, = ax.plot([xi], [yi], 'o', color=C_NAVY, markersize=6, zorder=6)
+        vl,  = ax.plot([xi, xi],      [ylim[0], yi], **CH_KW)
+        hl,  = ax.plot([xlim[0], xi], [yi,      yi], **CH_KW)
+        lx   = ax.text(xi,      ylim[0], f'{xi:.4g}', **LBL_X)
+        ly   = ax.text(xlim[0], yi,      f'{yi:.4g}', **LBL_Y)
+        dots.append(dot); vls.append(vl); hls.append(hl)
+        xlbls.append(lx); ylbls.append(ly)
+
+    hidden_ticks = []
+
+    def _hide_overlapping(ax, txt, which):
+        renderer = fig.canvas.get_renderer()
+        try:
+            bb = txt.get_window_extent(renderer).expanded(1.1, 1.6)
+        except Exception:
+            return []
+        ticks = ax.get_xticklabels() if which == 'x' else ax.get_yticklabels()
+        hidden = []
+        for tl in ticks:
+            if not tl.get_visible(): continue
+            if bb.overlaps(tl.get_window_extent(renderer)):
+                tl.set_visible(False); hidden.append(tl)
+        return hidden
+
+    # styled text-box factory
+    def _textbox(pos, initial):
+        ax_tb = fig.add_axes(pos)
+        ax_tb.set_facecolor('white')
+        for sp in ax_tb.spines.values():
+            sp.set_edgecolor(C_NAVY); sp.set_linewidth(0.9)
+        tb = TextBox(ax_tb, '', initial=str(initial))
+        tb.text_disp.set_fontfamily('serif')
+        tb.text_disp.set_color(C_NAVY)
+        tb.text_disp.set_fontsize(9)
+        return tb
+
+    # slider
+    ax_sl = fig.add_axes([0.09, 0.090, 0.57, 0.022])
+    ax_sl.set_facecolor('white')
+    for sp in ax_sl.spines.values(): sp.set_edgecolor(C_GRID)
+    slider = Slider(ax_sl, 'Time  [s]', float(t[0]), float(t[-1]),
+                    valinit=float(t[0]), color=C_NAVY)
+    slider.label.set_fontfamily('serif'); slider.label.set_color(C_NAVY)
+    slider.valtext.set_visible(False)   # value shown in the TextBox instead
+
+    # time text box (right of slider)
+    fig.text(0.678, 0.101, 't [s]:', ha='right', va='center',
+             fontfamily='serif', fontsize=9, color=C_NAVY)
+    t_box = _textbox([0.682, 0.084, 0.090, 0.033], f'{t[0]:.4g}')
+
+    # y-value text boxes, one per panel (inline with x-axis label)
+    renderer = fig.canvas.get_renderer()
+    fig_inv  = fig.transFigure.inverted()
+    BOX_H = 0.024;  BOX_W_FRAC = 0.20;  Y_OFFSET = 0.058
+    y_boxes = []
+    for i, (ax, (_, yd, *_)) in enumerate(zip(axs, pdata)):
+        pos     = ax.get_position()
+        xlbl_bb = ax.xaxis.label.get_window_extent(renderer)
+        lbl_cy  = pos.y0 - Y_OFFSET
+        lbl_x   = fig_inv.transform((xlbl_bb.x1, 0))[0] + 0.025
+        by  = lbl_cy - BOX_H / 2
+        bw  = pos.width * BOX_W_FRAC
+        bx  = pos.x1 - bw - 0.006           # flush to panel right edge
+        fig.text(lbl_x, lbl_cy, pdata[i][5], ha='left', va='center',
+                 fontfamily='serif', fontsize=8.5, color=C_NAVY, fontweight='bold')
+        y_boxes.append(_textbox([bx, by, bw, BOX_H], f'{yd[0]:.4g}'))
+
+    # re-entrant guard: set_val can trigger submit, which would loop
+    _lock = [False]
+
+    def update(_):
+        if _lock[0]: return
+        _lock[0] = True
+        try:
+            for tl in hidden_ticks: tl.set_visible(True)
+            hidden_ticks.clear()
+
+            idx = int(np.argmin(np.abs(t - slider.val)))
+
+            for i, (ax, (xd, yd, *_)) in enumerate(zip(axs, pdata)):
+                xlim = ax.get_xlim(); ylim = ax.get_ylim()
+                xi, yi = xd[idx], yd[idx]
+                dots[i].set_data([xi], [yi])
+                vls[i].set_data([xi, xi],      [ylim[0], yi])
+                hls[i].set_data([xlim[0], xi], [yi,      yi])
+                xlbls[i].set_position((xi,      ylim[0])); xlbls[i].set_text(f'{xi:.4g}')
+                ylbls[i].set_position((xlim[0], yi));      ylbls[i].set_text(f'{yi:.4g}')
+
+            # Keep all text inputs in sync with the current time index
+            t_box.set_val(f'{t[idx]:.4g}')
+            for i, (yb, (_, yd, *_)) in enumerate(zip(y_boxes, pdata)):
+                yb.set_val(f'{yd[idx]:.4g}')
+
+            fig.canvas.draw()
+            for i, ax in enumerate(axs):
+                hidden_ticks.extend(_hide_overlapping(ax, xlbls[i], 'x'))
+                hidden_ticks.extend(_hide_overlapping(ax, ylbls[i], 'y'))
+            fig.canvas.draw_idle()
+        finally:
+            _lock[0] = False
+
+    def on_time_submit(text):
+        try:
+            t_val = float(text.strip())
+            slider.set_val(np.clip(t_val, float(t[0]), float(t[-1])))
+        except ValueError:
+            if not _lock[0]: t_box.set_val(f'{slider.val:.4g}')  # restore on bad input
+
+    def on_y_submit(text, panel_idx):
+        _, yd = pdata[panel_idx][:2]
+        try:
+            y_val = float(text.strip())
+            idx   = int(np.argmin(np.abs(yd - y_val)))
+            slider.set_val(float(t[idx]))
+        except ValueError:
+            if not _lock[0]:
+                cur = int(np.argmin(np.abs(t - slider.val)))
+                y_boxes[panel_idx].set_val(f'{yd[cur]:.4g}')  # restore on bad input
+
+    def on_click(event):
+        if event.button != 1 or event.inaxes is None: return
+        for i, ax in enumerate(axs):
+            if event.inaxes is ax:
+                xd, yd = pdata[i][:2]
+                if not time_based[i]:
+                    # spatial panel: nearest point by normalised 2D distance
+                    xr = max(float(np.ptp(xd)), 1e-10)
+                    yr = max(float(np.ptp(yd)), 1e-10)
+                    dist2 = ((xd - event.xdata) / xr) ** 2 + \
+                            ((yd - event.ydata) / yr) ** 2
+                    idx = int(np.argmin(dist2))
+                else:
+                    idx = int(np.argmin(np.abs(xd - event.xdata)))
+                slider.set_val(float(t[idx]))
+                break
+
+    t_box.on_submit(on_time_submit)
+    for i, yb in enumerate(y_boxes):
+        yb.on_submit(lambda text, i=i: on_y_submit(text, i))
+    fig.canvas.mpl_connect('button_press_event', on_click)
+    slider.on_changed(update)
+
+    update(None)
+    plt.show()
+
+
+# SECTION 7: MAIN EXECUTION
+
+if __name__ == "__main__":
+
+    # 7.0 base case — default parameters, ISA atmosphere, Coriolis ON
+
+    print("\n" + "=" * 55)
+    print("  3D ROCKET TRAJECTORY SIMULATION")
+    print("=" * 55)
+    print(f"  Thrust        : {T0} N")
+    print(f"  Isp           : {ISP} s")
+    print(f"  m0            : {M0} kg   (mp = {MP} kg payload)")
+    print(f"  Propellant    : {M0 - MP:.1f} kg")
+    mdot_base = T0 / (G0 * ISP)
+    tburn_base = (M0 - MP) / mdot_base
+    print(f"  Mass flow     : {mdot_base:.4f} kg/s")
+    print(f"  Burn time     : {tburn_base:.2f} s")
+    print(f"  Atmosphere    : ISA (multi-layer)")
+    print(f"  Earth omega   : {OMEGA_EARTH:.2e} rad/s")
+    print("=" * 55)
+
+    print("\n>>> Running base case simulation...")
+    t0, r0, v0, drag0, mass0, accel0 = simulate_rocket()
+
+    metrics0 = compute_metrics(t0, r0, v0)
+    print_metrics(metrics0, "BASE CASE  (T=1500 N, ISA, Coriolis ON)")
+    plot_base_results(t0, r0, v0, drag0, title="Base Case — T=1500 N, ISA Atmosphere, Coriolis ON")
 
 </script>
 
@@ -1136,1617 +1136,1617 @@ plot_base_results(t, r, v, drag,
 </script>
 
 <script type="text/x-source" id="src-plot_utils">
-"""\
-Shared\ comparison\ plot\ for\ Tasks\ 4\.1–4\.4\.\
-Import\ after\ rocket_simulation\.py\ so\ the\ rcParams\ are\ already\ set\.\
-"""\
-\
-import\ numpy\ as\ np\
-import\ matplotlib\.pyplot\ as\ plt\
-from\ matplotlib\.widgets\ import\ Slider,\ TextBox\
-from\ matplotlib\.lines\ import\ Line2D\
-\
-from\ rocket_simulation\ import\ C_NAVY,\ C_GRID,\ _style_fig,\ _style_ax\
-\
-\
-def\ plot_comparison\(panels,\ labels,\ colors,\ linestyles,\ suptitle,\ annotation=None\):\
-\ \ \ \ """\
-\ \ \ \ Interactive\ 2×2\ comparison\ figure\ with\ a\ time\ slider\.\
-\
-\ \ \ \ Each\ panel\ dict\ needs:\ t_arrays,\ x_arrays,\ y_arrays,\ xlabel,\ ylabel,\
-\ \ \ \ ylabel_short,\ title,\ time_based\ \(True\ =\ x\ is\ time,\ draws\ vertical\ crosshair\)\.\
-\ \ \ \ Controls:\ slider,\ click\ on\ any\ panel,\ or\ type\ in\ the\ text\ boxes\.\
-\ \ \ \ """\
-\ \ \ \ n_curves\ =\ len\(labels\)\
-\ \ \ \ t_min\ =\ 0\.0\
-\ \ \ \ t_max\ =\ float\(max\(p\['t_arrays'\]\[ci\]\[\-1\]\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ for\ p\ in\ panels\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ for\ ci\ in\ range\(n_curves\)\)\)\
-\
-\ \ \ \ \#\ figure\ layout\
-\ \ \ \ fig\ =\ plt\.figure\(figsize=\(14,\ 12\)\)\
-\ \ \ \ gs\ \ =\ fig\.add_gridspec\(2,\ 2,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ left=0\.09,\ right=0\.96,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ bottom=0\.22,\ top=0\.93,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ hspace=0\.50,\ wspace=0\.40\)\
-\ \ \ \ axs\ =\ \[fig\.add_subplot\(gs\[i\ //\ 2,\ i\ %\ 2\]\)\ for\ i\ in\ range\(4\)\]\
-\ \ \ \ _style_fig\(fig,\ suptitle\)\
-\
-\ \ \ \ \#\ static\ curves\
-\ \ \ \ for\ ax,\ p\ in\ zip\(axs,\ panels\):\
-\ \ \ \ \ \ \ \ for\ ci\ in\ range\(n_curves\):\
-\ \ \ \ \ \ \ \ \ \ \ \ ax\.plot\(p\['x_arrays'\]\[ci\],\ p\['y_arrays'\]\[ci\],\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ color=colors\[ci\],\ linestyle=linestyles\[ci\],\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ linewidth=2\.0,\ label=labels\[ci\],\ zorder=2\)\
-\ \ \ \ \ \ \ \ _style_ax\(ax,\ p\['title'\],\ p\['xlabel'\],\ p\['ylabel'\]\)\
-\ \ \ \ \ \ \ \ ax\.legend\(fontsize=9,\ framealpha=0\.95\)\
-\ \ \ \ \ \ \ \ if\ not\ p\['time_based'\]:\
-\ \ \ \ \ \ \ \ \ \ \ \ ax\.set_aspect\('equal',\ adjustable='datalim'\)\
-\
-\ \ \ \ fig\.canvas\.draw\(\)\
-\
-\ \ \ \ \#\ separator\ above\ slider\
-\ \ \ \ fig\.add_artist\(Line2D\(\[0\.04,\ 0\.96\],\ \[0\.128,\ 0\.128\],\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ transform=fig\.transFigure,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ color=C_GRID,\ linewidth=0\.9,\ zorder=0\)\)\
-\
-\ \ \ \ \#\ optional\ key\-numbers\ box\ in\ panel\ 0\
-\ \ \ \ if\ annotation:\
-\ \ \ \ \ \ \ \ axs\[0\]\.text\(0\.97,\ 0\.97,\ annotation,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ transform=axs\[0\]\.transAxes,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ fontsize=8\.5,\ fontfamily='serif',\ color=C_NAVY,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ va='top',\ ha='right',\ linespacing=1\.7,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ bbox=dict\(boxstyle='round,pad=0\.45',\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ fc='white',\ ec=C_NAVY,\ alpha=0\.92,\ linewidth=0\.8\)\)\
-\
-\ \ \ \ \#\ dynamic\ overlay:\ dots\ \+\ crosshair\ for\ time\-based\ panels\
-\ \ \ \ CH_KW\ =\ dict\(color='\#C0C0C0',\ linewidth=0\.8,\ linestyle='\-',\ zorder=3\)\
-\ \ \ \ LBL_X\ =\ dict\(fontsize=8,\ color='\#333333',\ clip_on=False,\ fontfamily='serif',\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ ha='center',\ va='top',\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ bbox=dict\(boxstyle='round,pad=0\.2',\ fc='white',\ ec='none',\ alpha=0\.9\)\)\
-\
-\ \ \ \ dots\ \ \ =\ \[\[None\]\ \*\ n_curves\ for\ _\ in\ range\(4\)\]\
-\ \ \ \ vlines\ =\ \[None\]\ \*\ 4\
-\ \ \ \ xlbls\ \ =\ \[None\]\ \*\ 4\
-\
-\ \ \ \ for\ pi,\ \(ax,\ p\)\ in\ enumerate\(zip\(axs,\ panels\)\):\
-\ \ \ \ \ \ \ \ ylim\ =\ ax\.get_ylim\(\)\
-\ \ \ \ \ \ \ \ for\ ci\ in\ range\(n_curves\):\
-\ \ \ \ \ \ \ \ \ \ \ \ xi,\ yi\ =\ p\['x_arrays'\]\[ci\]\[0\],\ p\['y_arrays'\]\[ci\]\[0\]\
-\ \ \ \ \ \ \ \ \ \ \ \ dot,\ =\ ax\.plot\(\[xi\],\ \[yi\],\ 'o',\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ color=colors\[ci\],\ markersize=6,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ markeredgewidth=0\.6,\ markeredgecolor='white',\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ zorder=6\)\
-\ \ \ \ \ \ \ \ \ \ \ \ dots\[pi\]\[ci\]\ =\ dot\
-\ \ \ \ \ \ \ \ if\ p\['time_based'\]:\
-\ \ \ \ \ \ \ \ \ \ \ \ xi0\ =\ p\['x_arrays'\]\[0\]\[0\]\
-\ \ \ \ \ \ \ \ \ \ \ \ vl,\ =\ ax\.plot\(\[xi0,\ xi0\],\ \[ylim\[0\],\ ylim\[1\]\],\ \*\*CH_KW\)\
-\ \ \ \ \ \ \ \ \ \ \ \ lx\ \ =\ ax\.text\(xi0,\ ylim\[0\],\ f'\{xi0:\.4g\}',\ \*\*LBL_X\)\
-\ \ \ \ \ \ \ \ \ \ \ \ vlines\[pi\]\ =\ vl\
-\ \ \ \ \ \ \ \ \ \ \ \ xlbls\[pi\]\ \ =\ lx\
-\
-\ \ \ \ hidden_ticks\ =\ \[\]\
-\
-\ \ \ \ def\ _hide_overlapping\(ax,\ txt,\ which\):\
-\ \ \ \ \ \ \ \ renderer\ =\ fig\.canvas\.get_renderer\(\)\
-\ \ \ \ \ \ \ \ try:\
-\ \ \ \ \ \ \ \ \ \ \ \ bb\ =\ txt\.get_window_extent\(renderer\)\.expanded\(1\.1,\ 1\.6\)\
-\ \ \ \ \ \ \ \ except\ Exception:\
-\ \ \ \ \ \ \ \ \ \ \ \ return\ \[\]\
-\ \ \ \ \ \ \ \ ticks\ =\ ax\.get_xticklabels\(\)\ if\ which\ ==\ 'x'\ else\ ax\.get_yticklabels\(\)\
-\ \ \ \ \ \ \ \ hidden\ =\ \[\]\
-\ \ \ \ \ \ \ \ for\ tl\ in\ ticks:\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ not\ tl\.get_visible\(\):\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ continue\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ bb\.overlaps\(tl\.get_window_extent\(renderer\)\):\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ tl\.set_visible\(False\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ hidden\.append\(tl\)\
-\ \ \ \ \ \ \ \ return\ hidden\
-\
-\ \ \ \ \#\ styled\ text\-box\ factory\
-\ \ \ \ def\ _tb\(pos,\ initial\):\
-\ \ \ \ \ \ \ \ ax_tb\ =\ fig\.add_axes\(pos\)\
-\ \ \ \ \ \ \ \ ax_tb\.set_facecolor\('white'\)\
-\ \ \ \ \ \ \ \ for\ sp\ in\ ax_tb\.spines\.values\(\):\
-\ \ \ \ \ \ \ \ \ \ \ \ sp\.set_edgecolor\(C_NAVY\);\ sp\.set_linewidth\(0\.9\)\
-\ \ \ \ \ \ \ \ tb\ =\ TextBox\(ax_tb,\ '',\ initial=str\(initial\)\)\
-\ \ \ \ \ \ \ \ tb\.text_disp\.set_fontfamily\('serif'\)\
-\ \ \ \ \ \ \ \ tb\.text_disp\.set_color\(C_NAVY\)\
-\ \ \ \ \ \ \ \ tb\.text_disp\.set_fontsize\(9\)\
-\ \ \ \ \ \ \ \ return\ tb\
-\
-\ \ \ \ \#\ slider\
-\ \ \ \ ax_sl\ =\ fig\.add_axes\(\[0\.09,\ 0\.090,\ 0\.57,\ 0\.022\]\)\
-\ \ \ \ ax_sl\.set_facecolor\('white'\)\
-\ \ \ \ for\ sp\ in\ ax_sl\.spines\.values\(\):\ sp\.set_edgecolor\(C_GRID\)\
-\ \ \ \ slider\ =\ Slider\(ax_sl,\ 'Time\ \ \[s\]',\ t_min,\ t_max,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ valinit=t_min,\ color=C_NAVY\)\
-\ \ \ \ slider\.label\.set_fontfamily\('serif'\);\ slider\.label\.set_color\(C_NAVY\)\
-\ \ \ \ slider\.valtext\.set_visible\(False\)\
-\
-\ \ \ \ \#\ time\ text\ box\
-\ \ \ \ fig\.text\(0\.678,\ 0\.101,\ 't\ \[s\]:',\ ha='right',\ va='center',\
-\ \ \ \ \ \ \ \ \ \ \ \ \ fontfamily='serif',\ fontsize=9,\ color=C_NAVY\)\
-\ \ \ \ t_box\ =\ _tb\(\[0\.682,\ 0\.084,\ 0\.090,\ 0\.033\],\ f'\{t_min:\.4g\}'\)\
-\
-\ \ \ \ \#\ y\-value\ text\ boxes\ \(primary\ curve,\ inline\ with\ x\-axis\ label\)\
-\ \ \ \ renderer\ =\ fig\.canvas\.get_renderer\(\)\
-\ \ \ \ fig_inv\ \ =\ fig\.transFigure\.inverted\(\)\
-\ \ \ \ BOX_H\ =\ 0\.024;\ BOX_W_FRAC\ =\ 0\.20;\ Y_OFFSET\ =\ 0\.058\
-\
-\ \ \ \ y_boxes\ =\ \[\]\
-\ \ \ \ for\ ax,\ p\ in\ zip\(axs,\ panels\):\
-\ \ \ \ \ \ \ \ pos\ \ \ \ \ =\ ax\.get_position\(\)\
-\ \ \ \ \ \ \ \ xlbl_bb\ =\ ax\.xaxis\.label\.get_window_extent\(renderer\)\
-\ \ \ \ \ \ \ \ lbl_cy\ \ =\ pos\.y0\ \-\ Y_OFFSET\
-\ \ \ \ \ \ \ \ lbl_x\ \ \ =\ fig_inv\.transform\(\(xlbl_bb\.x1,\ 0\)\)\[0\]\ \+\ 0\.025\
-\ \ \ \ \ \ \ \ by\ \ =\ lbl_cy\ \-\ BOX_H\ /\ 2\
-\ \ \ \ \ \ \ \ bw\ \ =\ pos\.width\ \*\ BOX_W_FRAC\
-\ \ \ \ \ \ \ \ bx\ \ =\ pos\.x1\ \-\ bw\ \-\ 0\.006\
-\ \ \ \ \ \ \ \ fig\.text\(lbl_x,\ lbl_cy,\ p\['ylabel_short'\],\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ ha='left',\ va='center',\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ fontfamily='serif',\ fontsize=8\.5,\ color=C_NAVY,\ fontweight='bold'\)\
-\ \ \ \ \ \ \ \ y_boxes\.append\(_tb\(\[bx,\ by,\ bw,\ BOX_H\],\ f'\{p\["y_arrays"\]\[0\]\[0\]:\.4g\}'\)\)\
-\
-\ \ \ \ \#\ re\-entrant\ guard:\ set_val\ can\ trigger\ submit\ callbacks,\ which\ would\ loop\
-\ \ \ \ _lock\ =\ \[False\]\
-\
-\ \ \ \ def\ update\(_\):\
-\ \ \ \ \ \ \ \ if\ _lock\[0\]:\
-\ \ \ \ \ \ \ \ \ \ \ \ return\
-\ \ \ \ \ \ \ \ _lock\[0\]\ =\ True\
-\ \ \ \ \ \ \ \ try:\
-\ \ \ \ \ \ \ \ \ \ \ \ for\ tl\ in\ hidden_ticks:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ tl\.set_visible\(True\)\
-\ \ \ \ \ \ \ \ \ \ \ \ hidden_ticks\.clear\(\)\
-\
-\ \ \ \ \ \ \ \ \ \ \ \ t_val\ =\ slider\.val\
-\ \ \ \ \ \ \ \ \ \ \ \ for\ pi,\ \(ax,\ p\)\ in\ enumerate\(zip\(axs,\ panels\)\):\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ ylim\ =\ ax\.get_ylim\(\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ for\ ci\ in\ range\(n_curves\):\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ t_c\ =\ p\['t_arrays'\]\[ci\]\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ x_c\ =\ p\['x_arrays'\]\[ci\]\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ y_c\ =\ p\['y_arrays'\]\[ci\]\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ idx_c\ =\ int\(np\.argmin\(np\.abs\(t_c\ \-\ t_val\)\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ dots\[pi\]\[ci\]\.set_data\(\[x_c\[idx_c\]\],\ \[y_c\[idx_c\]\]\)\
-\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \#\ primary\-curve\ index\ for\ crosshair\ and\ text\ box\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ t_0\ \ \ =\ p\['t_arrays'\]\[0\]\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ x_0\ \ \ =\ p\['x_arrays'\]\[0\]\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ y_0\ \ \ =\ p\['y_arrays'\]\[0\]\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ idx_0\ =\ int\(np\.argmin\(np\.abs\(t_0\ \-\ t_val\)\)\)\
-\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ if\ p\['time_based'\]\ and\ vlines\[pi\]\ is\ not\ None:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ xi0\ =\ x_0\[idx_0\]\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ vlines\[pi\]\.set_data\(\[xi0,\ xi0\],\ \[ylim\[0\],\ ylim\[1\]\]\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ xlbls\[pi\]\.set_position\(\(xi0,\ ylim\[0\]\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ xlbls\[pi\]\.set_text\(f'\{xi0:\.4g\}'\)\
-\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ y_boxes\[pi\]\.set_val\(f'\{y_0\[idx_0\]:\.4g\}'\)\
-\
-\ \ \ \ \ \ \ \ \ \ \ \ t_box\.set_val\(f'\{t_val:\.4g\}'\)\
-\ \ \ \ \ \ \ \ \ \ \ \ fig\.canvas\.draw\(\)\
-\ \ \ \ \ \ \ \ \ \ \ \ for\ pi,\ ax\ in\ enumerate\(axs\):\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ if\ xlbls\[pi\]\ is\ not\ None:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ hidden_ticks\.extend\(_hide_overlapping\(ax,\ xlbls\[pi\],\ 'x'\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ fig\.canvas\.draw_idle\(\)\
-\ \ \ \ \ \ \ \ finally:\
-\ \ \ \ \ \ \ \ \ \ \ \ _lock\[0\]\ =\ False\
-\
-\ \ \ \ \#\ callbacks\
-\ \ \ \ def\ on_time_submit\(text\):\
-\ \ \ \ \ \ \ \ try:\
-\ \ \ \ \ \ \ \ \ \ \ \ t_val\ =\ float\(text\.strip\(\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ slider\.set_val\(np\.clip\(t_val,\ t_min,\ t_max\)\)\
-\ \ \ \ \ \ \ \ except\ ValueError:\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ not\ _lock\[0\]:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ t_box\.set_val\(f'\{slider\.val:\.4g\}'\)\
-\
-\ \ \ \ def\ on_y_submit\(text,\ pi\):\
-\ \ \ \ \ \ \ \ y_0\ =\ panels\[pi\]\['y_arrays'\]\[0\]\
-\ \ \ \ \ \ \ \ t_0\ =\ panels\[pi\]\['t_arrays'\]\[0\]\
-\ \ \ \ \ \ \ \ try:\
-\ \ \ \ \ \ \ \ \ \ \ \ y_val\ =\ float\(text\.strip\(\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ idx\ \ \ =\ int\(np\.argmin\(np\.abs\(y_0\ \-\ y_val\)\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ slider\.set_val\(float\(t_0\[idx\]\)\)\
-\ \ \ \ \ \ \ \ except\ ValueError:\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ not\ _lock\[0\]:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ cur\ =\ int\(np\.argmin\(np\.abs\(t_0\ \-\ slider\.val\)\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ y_boxes\[pi\]\.set_val\(f'\{y_0\[cur\]:\.4g\}'\)\
-\
-\ \ \ \ def\ on_click\(event\):\
-\ \ \ \ \ \ \ \ if\ event\.button\ !=\ 1\ or\ event\.inaxes\ is\ None:\
-\ \ \ \ \ \ \ \ \ \ \ \ return\
-\ \ \ \ \ \ \ \ for\ pi,\ \(ax,\ p\)\ in\ enumerate\(zip\(axs,\ panels\)\):\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ event\.inaxes\ is\ ax:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ t_0\ =\ p\['t_arrays'\]\[0\]\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ x_0\ =\ p\['x_arrays'\]\[0\]\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ y_0\ =\ p\['y_arrays'\]\[0\]\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ if\ p\['time_based'\]:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ idx\ =\ int\(np\.argmin\(np\.abs\(x_0\ \-\ event\.xdata\)\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ else:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ xr\ \ =\ max\(float\(np\.ptp\(x_0\)\),\ 1e\-10\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ yr\ \ =\ max\(float\(np\.ptp\(y_0\)\),\ 1e\-10\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ d2\ \ =\ \(\(x_0\ \-\ event\.xdata\)\ /\ xr\)\ \*\*\ 2\ \+\ \\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \(\(y_0\ \-\ event\.ydata\)\ /\ yr\)\ \*\*\ 2\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ idx\ =\ int\(np\.argmin\(d2\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ slider\.set_val\(float\(t_0\[idx\]\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ break\
-\
-\ \ \ \ t_box\.on_submit\(on_time_submit\)\
-\ \ \ \ for\ pi,\ yb\ in\ enumerate\(y_boxes\):\
-\ \ \ \ \ \ \ \ yb\.on_submit\(lambda\ text,\ pi=pi:\ on_y_submit\(text,\ pi\)\)\
-\ \ \ \ fig\.canvas\.mpl_connect\('button_press_event',\ on_click\)\
-\ \ \ \ slider\.on_changed\(update\)\
-\
-\ \ \ \ update\(None\)\
-\ \ \ \ plt\.show\(\)\
+"""
+Shared comparison plot for Tasks 4.1–4.4.
+Import after rocket_simulation.py so the rcParams are already set.
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.widgets import Slider, TextBox
+from matplotlib.lines import Line2D
+
+from rocket_simulation import C_NAVY, C_GRID, _style_fig, _style_ax
+
+
+def plot_comparison(panels, labels, colors, linestyles, suptitle, annotation=None):
+    """
+    Interactive 2×2 comparison figure with a time slider.
+
+    Each panel dict needs: t_arrays, x_arrays, y_arrays, xlabel, ylabel,
+    ylabel_short, title, time_based (True = x is time, draws vertical crosshair).
+    Controls: slider, click on any panel, or type in the text boxes.
+    """
+    n_curves = len(labels)
+    t_min = 0.0
+    t_max = float(max(p['t_arrays'][ci][-1]
+                      for p in panels
+                      for ci in range(n_curves)))
+
+    # figure layout
+    fig = plt.figure(figsize=(14, 12))
+    gs  = fig.add_gridspec(2, 2,
+                           left=0.09, right=0.96,
+                           bottom=0.22, top=0.93,
+                           hspace=0.50, wspace=0.40)
+    axs = [fig.add_subplot(gs[i // 2, i % 2]) for i in range(4)]
+    _style_fig(fig, suptitle)
+
+    # static curves
+    for ax, p in zip(axs, panels):
+        for ci in range(n_curves):
+            ax.plot(p['x_arrays'][ci], p['y_arrays'][ci],
+                    color=colors[ci], linestyle=linestyles[ci],
+                    linewidth=2.0, label=labels[ci], zorder=2)
+        _style_ax(ax, p['title'], p['xlabel'], p['ylabel'])
+        ax.legend(fontsize=9, framealpha=0.95)
+        if not p['time_based']:
+            ax.set_aspect('equal', adjustable='datalim')
+
+    fig.canvas.draw()
+
+    # separator above slider
+    fig.add_artist(Line2D([0.04, 0.96], [0.128, 0.128],
+                          transform=fig.transFigure,
+                          color=C_GRID, linewidth=0.9, zorder=0))
+
+    # optional key-numbers box in panel 0
+    if annotation:
+        axs[0].text(0.97, 0.97, annotation,
+                    transform=axs[0].transAxes,
+                    fontsize=8.5, fontfamily='serif', color=C_NAVY,
+                    va='top', ha='right', linespacing=1.7,
+                    bbox=dict(boxstyle='round,pad=0.45',
+                              fc='white', ec=C_NAVY, alpha=0.92, linewidth=0.8))
+
+    # dynamic overlay: dots + crosshair for time-based panels
+    CH_KW = dict(color='#C0C0C0', linewidth=0.8, linestyle='-', zorder=3)
+    LBL_X = dict(fontsize=8, color='#333333', clip_on=False, fontfamily='serif',
+                 ha='center', va='top',
+                 bbox=dict(boxstyle='round,pad=0.2', fc='white', ec='none', alpha=0.9))
+
+    dots   = [[None] * n_curves for _ in range(4)]
+    vlines = [None] * 4
+    xlbls  = [None] * 4
+
+    for pi, (ax, p) in enumerate(zip(axs, panels)):
+        ylim = ax.get_ylim()
+        for ci in range(n_curves):
+            xi, yi = p['x_arrays'][ci][0], p['y_arrays'][ci][0]
+            dot, = ax.plot([xi], [yi], 'o',
+                           color=colors[ci], markersize=6,
+                           markeredgewidth=0.6, markeredgecolor='white',
+                           zorder=6)
+            dots[pi][ci] = dot
+        if p['time_based']:
+            xi0 = p['x_arrays'][0][0]
+            vl, = ax.plot([xi0, xi0], [ylim[0], ylim[1]], **CH_KW)
+            lx  = ax.text(xi0, ylim[0], f'{xi0:.4g}', **LBL_X)
+            vlines[pi] = vl
+            xlbls[pi]  = lx
+
+    hidden_ticks = []
+
+    def _hide_overlapping(ax, txt, which):
+        renderer = fig.canvas.get_renderer()
+        try:
+            bb = txt.get_window_extent(renderer).expanded(1.1, 1.6)
+        except Exception:
+            return []
+        ticks = ax.get_xticklabels() if which == 'x' else ax.get_yticklabels()
+        hidden = []
+        for tl in ticks:
+            if not tl.get_visible():
+                continue
+            if bb.overlaps(tl.get_window_extent(renderer)):
+                tl.set_visible(False)
+                hidden.append(tl)
+        return hidden
+
+    # styled text-box factory
+    def _tb(pos, initial):
+        ax_tb = fig.add_axes(pos)
+        ax_tb.set_facecolor('white')
+        for sp in ax_tb.spines.values():
+            sp.set_edgecolor(C_NAVY); sp.set_linewidth(0.9)
+        tb = TextBox(ax_tb, '', initial=str(initial))
+        tb.text_disp.set_fontfamily('serif')
+        tb.text_disp.set_color(C_NAVY)
+        tb.text_disp.set_fontsize(9)
+        return tb
+
+    # slider
+    ax_sl = fig.add_axes([0.09, 0.090, 0.57, 0.022])
+    ax_sl.set_facecolor('white')
+    for sp in ax_sl.spines.values(): sp.set_edgecolor(C_GRID)
+    slider = Slider(ax_sl, 'Time  [s]', t_min, t_max,
+                    valinit=t_min, color=C_NAVY)
+    slider.label.set_fontfamily('serif'); slider.label.set_color(C_NAVY)
+    slider.valtext.set_visible(False)
+
+    # time text box
+    fig.text(0.678, 0.101, 't [s]:', ha='right', va='center',
+             fontfamily='serif', fontsize=9, color=C_NAVY)
+    t_box = _tb([0.682, 0.084, 0.090, 0.033], f'{t_min:.4g}')
+
+    # y-value text boxes (primary curve, inline with x-axis label)
+    renderer = fig.canvas.get_renderer()
+    fig_inv  = fig.transFigure.inverted()
+    BOX_H = 0.024; BOX_W_FRAC = 0.20; Y_OFFSET = 0.058
+
+    y_boxes = []
+    for ax, p in zip(axs, panels):
+        pos     = ax.get_position()
+        xlbl_bb = ax.xaxis.label.get_window_extent(renderer)
+        lbl_cy  = pos.y0 - Y_OFFSET
+        lbl_x   = fig_inv.transform((xlbl_bb.x1, 0))[0] + 0.025
+        by  = lbl_cy - BOX_H / 2
+        bw  = pos.width * BOX_W_FRAC
+        bx  = pos.x1 - bw - 0.006
+        fig.text(lbl_x, lbl_cy, p['ylabel_short'],
+                 ha='left', va='center',
+                 fontfamily='serif', fontsize=8.5, color=C_NAVY, fontweight='bold')
+        y_boxes.append(_tb([bx, by, bw, BOX_H], f'{p["y_arrays"][0][0]:.4g}'))
+
+    # re-entrant guard: set_val can trigger submit callbacks, which would loop
+    _lock = [False]
+
+    def update(_):
+        if _lock[0]:
+            return
+        _lock[0] = True
+        try:
+            for tl in hidden_ticks:
+                tl.set_visible(True)
+            hidden_ticks.clear()
+
+            t_val = slider.val
+            for pi, (ax, p) in enumerate(zip(axs, panels)):
+                ylim = ax.get_ylim()
+                for ci in range(n_curves):
+                    t_c = p['t_arrays'][ci]
+                    x_c = p['x_arrays'][ci]
+                    y_c = p['y_arrays'][ci]
+                    idx_c = int(np.argmin(np.abs(t_c - t_val)))
+                    dots[pi][ci].set_data([x_c[idx_c]], [y_c[idx_c]])
+
+                # primary-curve index for crosshair and text box
+                t_0   = p['t_arrays'][0]
+                x_0   = p['x_arrays'][0]
+                y_0   = p['y_arrays'][0]
+                idx_0 = int(np.argmin(np.abs(t_0 - t_val)))
+
+                if p['time_based'] and vlines[pi] is not None:
+                    xi0 = x_0[idx_0]
+                    vlines[pi].set_data([xi0, xi0], [ylim[0], ylim[1]])
+                    xlbls[pi].set_position((xi0, ylim[0]))
+                    xlbls[pi].set_text(f'{xi0:.4g}')
+
+                y_boxes[pi].set_val(f'{y_0[idx_0]:.4g}')
+
+            t_box.set_val(f'{t_val:.4g}')
+            fig.canvas.draw()
+            for pi, ax in enumerate(axs):
+                if xlbls[pi] is not None:
+                    hidden_ticks.extend(_hide_overlapping(ax, xlbls[pi], 'x'))
+            fig.canvas.draw_idle()
+        finally:
+            _lock[0] = False
+
+    # callbacks
+    def on_time_submit(text):
+        try:
+            t_val = float(text.strip())
+            slider.set_val(np.clip(t_val, t_min, t_max))
+        except ValueError:
+            if not _lock[0]:
+                t_box.set_val(f'{slider.val:.4g}')
+
+    def on_y_submit(text, pi):
+        y_0 = panels[pi]['y_arrays'][0]
+        t_0 = panels[pi]['t_arrays'][0]
+        try:
+            y_val = float(text.strip())
+            idx   = int(np.argmin(np.abs(y_0 - y_val)))
+            slider.set_val(float(t_0[idx]))
+        except ValueError:
+            if not _lock[0]:
+                cur = int(np.argmin(np.abs(t_0 - slider.val)))
+                y_boxes[pi].set_val(f'{y_0[cur]:.4g}')
+
+    def on_click(event):
+        if event.button != 1 or event.inaxes is None:
+            return
+        for pi, (ax, p) in enumerate(zip(axs, panels)):
+            if event.inaxes is ax:
+                t_0 = p['t_arrays'][0]
+                x_0 = p['x_arrays'][0]
+                y_0 = p['y_arrays'][0]
+                if p['time_based']:
+                    idx = int(np.argmin(np.abs(x_0 - event.xdata)))
+                else:
+                    xr  = max(float(np.ptp(x_0)), 1e-10)
+                    yr  = max(float(np.ptp(y_0)), 1e-10)
+                    d2  = ((x_0 - event.xdata) / xr) ** 2 + \
+                          ((y_0 - event.ydata) / yr) ** 2
+                    idx = int(np.argmin(d2))
+                slider.set_val(float(t_0[idx]))
+                break
+
+    t_box.on_submit(on_time_submit)
+    for pi, yb in enumerate(y_boxes):
+        yb.on_submit(lambda text, pi=pi: on_y_submit(text, pi))
+    fig.canvas.mpl_connect('button_press_event', on_click)
+    slider.on_changed(update)
+
+    update(None)
+    plt.show()
 
 </script>
 
 <script type="text/x-source" id="src-task_4_1">
-"""\
-Task\ 4\.1\ —\ Thrust\ Variation\
-Compare\ T\ =\ 1000\ N,\ 1500\ N\ \(base\),\ 3000\ N\
-"""\
-import\ sys\
-import\ numpy\ as\ np\
-\
-if\ hasattr\(sys\.stdout,\ 'reconfigure'\):\
-\ \ \ \ sys\.stdout\.reconfigure\(encoding='utf\-8',\ errors='replace'\)\
-if\ hasattr\(sys\.stderr,\ 'reconfigure'\):\
-\ \ \ \ sys\.stderr\.reconfigure\(encoding='utf\-8',\ errors='replace'\)\
-\
-from\ rocket_simulation\ import\ \(\
-\ \ \ \ simulate_rocket,\ compute_metrics,\ print_metrics,\
-\ \ \ \ G0,\ ISP,\ MP,\
-\ \ \ \ C_NAVY,\ C_LTBLUE,\
-\)\
-from\ plot_utils\ import\ plot_comparison\
-\
-\#\ three\ thrust\ levels;\ same\ propellant\ mass\ in\ all\ cases\
-THRUST_CASES\ =\ \[1000\.0,\ 1500\.0,\ 3000\.0\]\
-LABELS\ \ \ \ \ \ \ =\ \['T\ =\ 1000\ N',\ 'T\ =\ 1500\ N\ \(base\)',\ 'T\ =\ 3000\ N'\]\
-COLORS\ \ \ \ \ \ \ =\ \[C_LTBLUE,\ C_NAVY,\ '\#C0392B'\]\
-LINESTYLES\ \ \ =\ \['\-',\ '\-\-',\ ':'\]\
-\
-PROP_MASS\ =\ 90\.0\ \ \ \#\ kg\ —\ same\ propellant\ for\ all\ cases\
-\
-print\("="\ \*\ 60\)\
-print\("\ \ TASK\ 4\.1\ —\ THRUST\ VARIATION"\)\
-print\("="\ \*\ 60\)\
-\
-results\ \ \ \ \ \ =\ \[\]\
-metrics_list\ =\ \[\]\
-for\ T\ in\ THRUST_CASES:\
-\ \ \ \ mdot\ \ \ =\ T\ /\ \(G0\ \*\ ISP\)\
-\ \ \ \ t_burn\ =\ PROP_MASS\ /\ mdot\
-\ \ \ \ print\(f"\n>>>\ T\ =\ \{T:\.0f\}\ N\ \ \(mdot\ =\ \{mdot:\.4f\}\ kg/s,\ t_burn\ =\ \{t_burn:\.2f\}\ s\)"\)\
-\ \ \ \ t,\ r,\ v,\ drag,\ mass,\ accel\ =\ simulate_rocket\(thrust=T,\ m_propellant=PROP_MASS\)\
-\ \ \ \ m_obj\ =\ compute_metrics\(t,\ r,\ v\)\
-\ \ \ \ results\.append\(\(t,\ r,\ v,\ drag,\ mass,\ accel\)\)\
-\ \ \ \ metrics_list\.append\(m_obj\)\
-\ \ \ \ print_metrics\(m_obj,\ f"T\ =\ \{T:\.0f\}\ N\ \ \(t_burn\ =\ \{t_burn:\.2f\}\ s\)"\)\
-\
-print\("\n"\ \+\ "="\ \*\ 60\)\
-print\("\ \ TASK\ 4\.1\ —\ ANSWERS"\)\
-print\("="\ \*\ 60\)\
-\
-print\("\n1\.\ HOW\ DOES\ THE\ MAXIMUM\ ALTITUDE\ CHANGE\?"\)\
-for\ T,\ m_obj\ in\ zip\(THRUST_CASES,\ metrics_list\):\
-\ \ \ \ mdot\ \ \ =\ T\ /\ \(G0\ \*\ ISP\)\
-\ \ \ \ t_burn\ =\ PROP_MASS\ /\ mdot\
-\ \ \ \ print\(f"\ \ \ T\ =\ \{T:5\.0f\}\ N\ \ \->\ \ z_max\ =\ \{m_obj\['z_max'\]/1000:7\.3f\}\ km\ \ "\
-\ \ \ \ \ \ \ \ \ \ f"\(t_burn\ =\ \{t_burn:\.2f\}\ s\)"\)\
-print\(\)\
-print\("\ \ \ NOTE:\ all\ three\ cases\ have\ the\ same\ propellant\ mass\ \(90\ kg\),"\)\
-print\("\ \ \ so\ the\ total\ impulse\ I\ =\ T\ \*\ t_burn\ =\ Isp\ \*\ g0\ \*\ m_prop\ is\ IDENTICAL\."\)\
-print\("\ \ \ Yet\ T=3000N\ reaches\ LESS\ altitude\ than\ T=1500N\.\ Why\?"\)\
-print\("\ \ \ \->\ Higher\ thrust\ \->\ higher\ speed\ at\ LOW\ altitude\ \(dense\ air\)"\)\
-print\("\ \ \ \ \ \ \->\ more\ aerodynamic\ drag\ loss\ \(F_D\ \~\ v\^2\)"\)\
-print\("\ \ \ \->\ Lower\ thrust\ \->\ slower\ ascent\ \->\ more\ time\ fighting\ gravity\ \(gravity\ loss\)"\)\
-print\("\ \ \ There\ is\ an\ optimal\ thrust\.\ For\ this\ rocket,\ T=1500N\ is\ near\-optimal;"\)\
-print\("\ \ \ T=3000N\ wastes\ energy\ to\ drag;\ T=1000N\ wastes\ energy\ to\ gravity\."\)\
-\
-print\("\n2\.\ DOES\ THE\ ROCKET\ ESCAPE\ THE\ DENSE\ ATMOSPHERE\ \(troposphere\ >\ 11\ km\)\?"\)\
-for\ T,\ m_obj\ in\ zip\(THRUST_CASES,\ metrics_list\):\
-\ \ \ \ esc\ =\ "YES"\ if\ m_obj\['z_max'\]\ >\ 11000\ else\ "NO\ "\
-\ \ \ \ print\(f"\ \ \ T\ =\ \{T:5\.0f\}\ N\ \ \->\ \ z_max\ =\ \{m_obj\['z_max'\]/1000:\.3f\}\ km\ \ \->\ \ \{esc\}"\)\
-\
-print\("\n3\.\ HOW\ DOES\ BURNOUT\ TIME\ VARY\ WITH\ THRUST\?"\)\
-print\("\ \ \ t_burn\ =\ m_prop\ /\ mdot\ =\ m_prop\ \*\ g0\ \*\ Isp\ /\ T"\)\
-print\("\ \ \ \->\ Higher\ thrust\ means\ shorter\ burnout\ time\ \(more\ propellant\ consumed\ per\ second\)\."\)\
-for\ T\ in\ THRUST_CASES:\
-\ \ \ \ mdot\ \ \ =\ T\ /\ \(G0\ \*\ ISP\)\
-\ \ \ \ t_burn\ =\ PROP_MASS\ /\ mdot\
-\ \ \ \ print\(f"\ \ \ T\ =\ \{T:5\.0f\}\ N\ \ \->\ \ t_burn\ =\ \{t_burn:\.2f\}\ s\ \ \(mdot\ =\ \{mdot:\.4f\}\ kg/s\)"\)\
-\
-\#\ text\ box\ shown\ in\ the\ first\ plot\ panel\
-ann_lines\ =\ \["Max\ altitude\ \&\ burnout\ time:"\]\
-for\ T,\ m_obj\ in\ zip\(THRUST_CASES,\ metrics_list\):\
-\ \ \ \ mdot\ \ \ =\ T\ /\ \(G0\ \*\ ISP\)\
-\ \ \ \ t_burn\ =\ PROP_MASS\ /\ mdot\
-\ \ \ \ ann_lines\.append\(f"\ \ T=\{T:\.0f\}N:\ z_max=\{m_obj\['z_max'\]/1000:\.2f\}km\ \ t_b=\{t_burn:\.1f\}s"\)\
-ann_lines\.append\("Troposphere\ limit:\ 11\ km"\)\
-annotation\ =\ "\n"\.join\(ann_lines\)\
-\
-\#\ four\ panels:\ altitude,\ speed,\ drag,\ mass\
-panels\ =\ \[\
-\ \ \ \ \{\
-\ \ \ \ \ \ \ \ 't_arrays':\ \ \ \ \ \[results\[i\]\[0\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'x_arrays':\ \ \ \ \ \[results\[i\]\[0\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'y_arrays':\ \ \ \ \ \[results\[i\]\[1\]\[:,\ 2\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'xlabel':\ \ \ \ \ \ \ 'Time\ \[s\]',\
-\ \ \ \ \ \ \ \ 'ylabel':\ \ \ \ \ \ \ 'Altitude\ \[m\]',\
-\ \ \ \ \ \ \ \ 'ylabel_short':\ 'z\ \[m\]:',\
-\ \ \ \ \ \ \ \ 'title':\ \ \ \ \ \ \ \ 'Altitude\ vs\ Time',\
-\ \ \ \ \ \ \ \ 'time_based':\ \ \ True,\
-\ \ \ \ \},\
-\ \ \ \ \{\
-\ \ \ \ \ \ \ \ 't_arrays':\ \ \ \ \ \[results\[i\]\[0\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'x_arrays':\ \ \ \ \ \[results\[i\]\[0\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'y_arrays':\ \ \ \ \ \[np\.linalg\.norm\(results\[i\]\[2\],\ axis=1\)\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'xlabel':\ \ \ \ \ \ \ 'Time\ \[s\]',\
-\ \ \ \ \ \ \ \ 'ylabel':\ \ \ \ \ \ \ 'Speed\ \[m/s\]',\
-\ \ \ \ \ \ \ \ 'ylabel_short':\ 'v\ \[m/s\]:',\
-\ \ \ \ \ \ \ \ 'title':\ \ \ \ \ \ \ \ 'Speed\ vs\ Time',\
-\ \ \ \ \ \ \ \ 'time_based':\ \ \ True,\
-\ \ \ \ \},\
-\ \ \ \ \{\
-\ \ \ \ \ \ \ \ 't_arrays':\ \ \ \ \ \[results\[i\]\[0\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'x_arrays':\ \ \ \ \ \[results\[i\]\[0\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'y_arrays':\ \ \ \ \ \[results\[i\]\[3\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'xlabel':\ \ \ \ \ \ \ 'Time\ \[s\]',\
-\ \ \ \ \ \ \ \ 'ylabel':\ \ \ \ \ \ \ 'Drag\ Force\ \[N\]',\
-\ \ \ \ \ \ \ \ 'ylabel_short':\ 'D\ \[N\]:',\
-\ \ \ \ \ \ \ \ 'title':\ \ \ \ \ \ \ \ 'Aerodynamic\ Drag\ vs\ Time',\
-\ \ \ \ \ \ \ \ 'time_based':\ \ \ True,\
-\ \ \ \ \},\
-\ \ \ \ \{\
-\ \ \ \ \ \ \ \ 't_arrays':\ \ \ \ \ \[results\[i\]\[0\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'x_arrays':\ \ \ \ \ \[results\[i\]\[0\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'y_arrays':\ \ \ \ \ \[results\[i\]\[4\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'xlabel':\ \ \ \ \ \ \ 'Time\ \[s\]',\
-\ \ \ \ \ \ \ \ 'ylabel':\ \ \ \ \ \ \ 'Mass\ \[kg\]',\
-\ \ \ \ \ \ \ \ 'ylabel_short':\ 'm\ \[kg\]:',\
-\ \ \ \ \ \ \ \ 'title':\ \ \ \ \ \ \ \ 'Mass\ vs\ Time',\
-\ \ \ \ \ \ \ \ 'time_based':\ \ \ True,\
-\ \ \ \ \},\
-\]\
-\
-plot_comparison\(\
-\ \ \ \ panels,\ LABELS,\ COLORS,\ LINESTYLES,\
-\ \ \ \ suptitle='Task\ 4\.1\ —\ Effect\ of\ Thrust\ on\ Rocket\ Trajectory',\
-\ \ \ \ annotation=annotation,\
-\)
+"""
+Task 4.1 — Thrust Variation
+Compare T = 1000 N, 1500 N (base), 3000 N
+"""
+import sys
+import numpy as np
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+from rocket_simulation import (
+    simulate_rocket, compute_metrics, print_metrics,
+    G0, ISP, MP,
+    C_NAVY, C_LTBLUE,
+)
+from plot_utils import plot_comparison
+
+# three thrust levels; same propellant mass in all cases
+THRUST_CASES = [1000.0, 1500.0, 3000.0]
+LABELS       = ['T = 1000 N', 'T = 1500 N (base)', 'T = 3000 N']
+COLORS       = [C_LTBLUE, C_NAVY, '#C0392B']
+LINESTYLES   = ['-', '--', ':']
+
+PROP_MASS = 90.0   # kg — same propellant for all cases
+
+print("=" * 60)
+print("  TASK 4.1 — THRUST VARIATION")
+print("=" * 60)
+
+results      = []
+metrics_list = []
+for T in THRUST_CASES:
+    mdot   = T / (G0 * ISP)
+    t_burn = PROP_MASS / mdot
+    print(f"\n>>> T = {T:.0f} N  (mdot = {mdot:.4f} kg/s, t_burn = {t_burn:.2f} s)")
+    t, r, v, drag, mass, accel = simulate_rocket(thrust=T, m_propellant=PROP_MASS)
+    m_obj = compute_metrics(t, r, v)
+    results.append((t, r, v, drag, mass, accel))
+    metrics_list.append(m_obj)
+    print_metrics(m_obj, f"T = {T:.0f} N  (t_burn = {t_burn:.2f} s)")
+
+print("\n" + "=" * 60)
+print("  TASK 4.1 — ANSWERS")
+print("=" * 60)
+
+print("\n1. HOW DOES THE MAXIMUM ALTITUDE CHANGE?")
+for T, m_obj in zip(THRUST_CASES, metrics_list):
+    mdot   = T / (G0 * ISP)
+    t_burn = PROP_MASS / mdot
+    print(f"   T = {T:5.0f} N  ->  z_max = {m_obj['z_max']/1000:7.3f} km  "
+          f"(t_burn = {t_burn:.2f} s)")
+print()
+print("   NOTE: all three cases have the same propellant mass (90 kg),")
+print("   so the total impulse I = T * t_burn = Isp * g0 * m_prop is IDENTICAL.")
+print("   Yet T=3000N reaches LESS altitude than T=1500N. Why?")
+print("   -> Higher thrust -> higher speed at LOW altitude (dense air)")
+print("      -> more aerodynamic drag loss (F_D ~ v^2)")
+print("   -> Lower thrust -> slower ascent -> more time fighting gravity (gravity loss)")
+print("   There is an optimal thrust. For this rocket, T=1500N is near-optimal;")
+print("   T=3000N wastes energy to drag; T=1000N wastes energy to gravity.")
+
+print("\n2. DOES THE ROCKET ESCAPE THE DENSE ATMOSPHERE (troposphere > 11 km)?")
+for T, m_obj in zip(THRUST_CASES, metrics_list):
+    esc = "YES" if m_obj['z_max'] > 11000 else "NO "
+    print(f"   T = {T:5.0f} N  ->  z_max = {m_obj['z_max']/1000:.3f} km  ->  {esc}")
+
+print("\n3. HOW DOES BURNOUT TIME VARY WITH THRUST?")
+print("   t_burn = m_prop / mdot = m_prop * g0 * Isp / T")
+print("   -> Higher thrust means shorter burnout time (more propellant consumed per second).")
+for T in THRUST_CASES:
+    mdot   = T / (G0 * ISP)
+    t_burn = PROP_MASS / mdot
+    print(f"   T = {T:5.0f} N  ->  t_burn = {t_burn:.2f} s  (mdot = {mdot:.4f} kg/s)")
+
+# text box shown in the first plot panel
+ann_lines = ["Max altitude & burnout time:"]
+for T, m_obj in zip(THRUST_CASES, metrics_list):
+    mdot   = T / (G0 * ISP)
+    t_burn = PROP_MASS / mdot
+    ann_lines.append(f"  T={T:.0f}N: z_max={m_obj['z_max']/1000:.2f}km  t_b={t_burn:.1f}s")
+ann_lines.append("Troposphere limit: 11 km")
+annotation = "\n".join(ann_lines)
+
+# four panels: altitude, speed, drag, mass
+panels = [
+    {
+        't_arrays':     [results[i][0] for i in range(3)],
+        'x_arrays':     [results[i][0] for i in range(3)],
+        'y_arrays':     [results[i][1][:, 2] for i in range(3)],
+        'xlabel':       'Time [s]',
+        'ylabel':       'Altitude [m]',
+        'ylabel_short': 'z [m]:',
+        'title':        'Altitude vs Time',
+        'time_based':   True,
+    },
+    {
+        't_arrays':     [results[i][0] for i in range(3)],
+        'x_arrays':     [results[i][0] for i in range(3)],
+        'y_arrays':     [np.linalg.norm(results[i][2], axis=1) for i in range(3)],
+        'xlabel':       'Time [s]',
+        'ylabel':       'Speed [m/s]',
+        'ylabel_short': 'v [m/s]:',
+        'title':        'Speed vs Time',
+        'time_based':   True,
+    },
+    {
+        't_arrays':     [results[i][0] for i in range(3)],
+        'x_arrays':     [results[i][0] for i in range(3)],
+        'y_arrays':     [results[i][3] for i in range(3)],
+        'xlabel':       'Time [s]',
+        'ylabel':       'Drag Force [N]',
+        'ylabel_short': 'D [N]:',
+        'title':        'Aerodynamic Drag vs Time',
+        'time_based':   True,
+    },
+    {
+        't_arrays':     [results[i][0] for i in range(3)],
+        'x_arrays':     [results[i][0] for i in range(3)],
+        'y_arrays':     [results[i][4] for i in range(3)],
+        'xlabel':       'Time [s]',
+        'ylabel':       'Mass [kg]',
+        'ylabel_short': 'm [kg]:',
+        'title':        'Mass vs Time',
+        'time_based':   True,
+    },
+]
+
+plot_comparison(
+    panels, LABELS, COLORS, LINESTYLES,
+    suptitle='Task 4.1 — Effect of Thrust on Rocket Trajectory',
+    annotation=annotation,
+)
 </script>
 
 <script type="text/x-source" id="src-task_4_2">
-\
-"""\
-Task\ 4\.2\ —\ Remove\ Coriolis\ Force\
-Compare\ omega\ =\ OMEGA_EARTH\ \(base\)\ vs\ omega\ =\ 0\ \(Coriolis\ disabled\)\
-"""\
-import\ sys\
-import\ numpy\ as\ np\
-\
-if\ hasattr\(sys\.stdout,\ 'reconfigure'\):\
-\ \ \ \ sys\.stdout\.reconfigure\(encoding='utf\-8',\ errors='replace'\)\
-if\ hasattr\(sys\.stderr,\ 'reconfigure'\):\
-\ \ \ \ sys\.stderr\.reconfigure\(encoding='utf\-8',\ errors='replace'\)\
-\
-from\ rocket_simulation\ import\ \(\
-\ \ \ \ simulate_rocket,\ compute_metrics,\ print_metrics,\
-\ \ \ \ OMEGA_EARTH,\ C_NAVY,\ C_GOLD,\
-\)\
-from\ plot_utils\ import\ plot_comparison\
-\
-\#\ two\ cases:\ real\ Earth\ rotation\ vs\.\ no\ rotation\
-OMEGA_CASES\ =\ \[OMEGA_EARTH,\ 0\.0\]\
-LABELS\ \ \ \ \ \ =\ \['Coriolis\ ON\ \(base\)',\ 'Coriolis\ OFF\ \(omega=0\)'\]\
-COLORS\ \ \ \ \ \ =\ \[C_NAVY,\ C_GOLD\]\
-LINESTYLES\ \ =\ \['\-\-',\ '\-'\]\
-\
-print\("="\ \*\ 60\)\
-print\("\ \ TASK\ 4\.2\ —\ CORIOLIS\ FORCE\ REMOVAL"\)\
-print\("="\ \*\ 60\)\
-\
-results\ \ \ \ \ \ =\ \[\]\
-metrics_list\ =\ \[\]\
-for\ omega,\ label\ in\ zip\(OMEGA_CASES,\ LABELS\):\
-\ \ \ \ print\(f"\n>>>\ Running:\ \{label\}\ \ \(omega\ =\ \{omega:\.2e\}\ rad/s\)"\)\
-\ \ \ \ t,\ r,\ v,\ drag,\ mass,\ accel\ =\ simulate_rocket\(omega=omega\)\
-\ \ \ \ m_obj\ =\ compute_metrics\(t,\ r,\ v\)\
-\ \ \ \ results\.append\(\(t,\ r,\ v,\ drag,\ mass,\ accel\)\)\
-\ \ \ \ metrics_list\.append\(m_obj\)\
-\ \ \ \ print_metrics\(m_obj,\ label\)\
-\
-print\("\n"\ \+\ "="\ \*\ 60\)\
-print\("\ \ TASK\ 4\.2\ —\ ANSWERS"\)\
-print\("="\ \*\ 60\)\
-\
-m_on\ \ =\ metrics_list\[0\]\
-m_off\ =\ metrics_list\[1\]\
-\
-print\("\n1\.\ HOW\ DOES\ THE\ TRAJECTORY\ CHANGE\?"\)\
-print\(f"\ \ \ Coriolis\ ON:\ \ landing\ x\ \(East\)\ \ =\ \{m_on\['x_land'\]:\+\.4f\}\ m"\)\
-print\(f"\ \ \ Coriolis\ ON:\ \ landing\ y\ \(North\)\ =\ \{m_on\['y_land'\]:\+\.4f\}\ m"\)\
-print\(f"\ \ \ Coriolis\ OFF:\ landing\ x\ \(East\)\ \ =\ \{m_off\['x_land'\]:\+\.4f\}\ m"\)\
-print\(f"\ \ \ Coriolis\ OFF:\ landing\ y\ \(North\)\ =\ \{m_off\['y_land'\]:\+\.4f\}\ m"\)\
-print\(f"\ \ \ Horizontal\ range\ with\ Coriolis:\ \ \ \ \{m_on\['range'\]:\.4f\}\ m"\)\
-print\(f"\ \ \ Horizontal\ range\ without\ Coriolis:\ \{m_off\['range'\]:\.4f\}\ m"\)\
-print\("\ \ \ The\ Coriolis\ force\ deflects\ the\ rocket\ WESTWARD\ \(\-x\)\ during\ ascent\."\)\
-print\("\ \ \ On\ descent\ \(vz\ <\ 0\),\ it\ deflects\ EASTWARD,\ partially\ cancelling\."\)\
-print\("\ \ \ Net\ effect:\ small\ westward\ shift\ at\ the\ landing\ site\."\)\
-\
-print\("\n2\.\ WHICH\ DIRECTION\ IS\ MOST\ AFFECTED\?"\)\
-print\("\ \ \ At\ the\ equator,\ the\ Coriolis\ acceleration\ is:"\)\
-print\("\ \ \ \ \ a_Cx\ =\ \-2\ \*\ omega\ \*\ vz\ \ \ \[East\-West\ component\]"\)\
-print\("\ \ \ \ \ a_Cy\ =\ \ 0\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \[North\-South\ —\ zero\ at\ equator\]"\)\
-print\("\ \ \ \ \ a_Cz\ =\ \+2\ \*\ omega\ \*\ vx\ \ \ \[Vertical\ —\ small,\ since\ vx\ remains\ small\]"\)\
-print\("\ \ \ \->\ EAST\-WEST\ \(x\)\ direction\ is\ most\ affected\."\)\
-print\("\ \ \ \->\ Rising\ rocket\ \(vz\ >\ 0\)\ deflects\ west;\ descending\ \(vz\ <\ 0\)\ deflects\ east\."\)\
-print\(f"\ \ \ Net\ west\ deflection:\ \{abs\(m_on\['x_land'\]\):\.4f\}\ m"\)\
-print\(f"\ \ \ North\ deviation:\ \ \ \ \ \{abs\(m_on\['y_land'\]\):\.4e\}\ m\ \ \(effectively\ zero\)"\)\
-\
-\#\ text\ box\ shown\ in\ the\ first\ plot\ panel\
-annotation\ =\ \(\
-\ \ \ \ f"Landing\ displacement:\n"\
-\ \ \ \ f"\ \ Coriolis\ ON:\ \ x=\{m_on\['x_land'\]:\+\.4f\}m\ \ y=\{m_on\['y_land'\]:\+\.2e\}m\n"\
-\ \ \ \ f"\ \ Coriolis\ OFF:\ x=\{m_off\['x_land'\]:\+\.4f\}m\ \ y=\{m_off\['y_land'\]:\+\.2e\}m\n"\
-\ \ \ \ f"Most\ affected:\ East\-West\ \(x\)\n"\
-\ \ \ \ f"\ \ a_Cx\ =\ \-2\*omega\*vz\ \ \(west\ when\ rising\)"\
-\)\
-\
-\#\ unpack\ trajectories\ for\ both\ cases\
-t0,\ r0\ =\ results\[0\]\[0\],\ results\[0\]\[1\]\
-t1,\ r1\ =\ results\[1\]\[0\],\ results\[1\]\[1\]\
-\
-\#\ four\ panels:\ altitude,\ east\ displacement,\ north\ displacement,\ horizontal\ projection\
-panels\ =\ \[\
-\ \ \ \ \{\
-\ \ \ \ \ \ \ \ 't_arrays':\ \ \ \ \ \[t0,\ t1\],\
-\ \ \ \ \ \ \ \ 'x_arrays':\ \ \ \ \ \[t0,\ t1\],\
-\ \ \ \ \ \ \ \ 'y_arrays':\ \ \ \ \ \[r0\[:,\ 2\],\ r1\[:,\ 2\]\],\
-\ \ \ \ \ \ \ \ 'xlabel':\ \ \ \ \ \ \ 'Time\ \[s\]',\
-\ \ \ \ \ \ \ \ 'ylabel':\ \ \ \ \ \ \ 'Altitude\ \[m\]',\
-\ \ \ \ \ \ \ \ 'ylabel_short':\ 'z\ \[m\]:',\
-\ \ \ \ \ \ \ \ 'title':\ \ \ \ \ \ \ \ 'Altitude\ vs\ Time',\
-\ \ \ \ \ \ \ \ 'time_based':\ \ \ True,\
-\ \ \ \ \},\
-\ \ \ \ \{\
-\ \ \ \ \ \ \ \ 't_arrays':\ \ \ \ \ \[t0,\ t1\],\
-\ \ \ \ \ \ \ \ 'x_arrays':\ \ \ \ \ \[t0,\ t1\],\
-\ \ \ \ \ \ \ \ 'y_arrays':\ \ \ \ \ \[r0\[:,\ 0\],\ r1\[:,\ 0\]\],\
-\ \ \ \ \ \ \ \ 'xlabel':\ \ \ \ \ \ \ 'Time\ \[s\]',\
-\ \ \ \ \ \ \ \ 'ylabel':\ \ \ \ \ \ \ 'East\ Displacement\ x\ \[m\]',\
-\ \ \ \ \ \ \ \ 'ylabel_short':\ 'x\ \[m\]:',\
-\ \ \ \ \ \ \ \ 'title':\ \ \ \ \ \ \ \ 'East\ Displacement\ vs\ Time',\
-\ \ \ \ \ \ \ \ 'time_based':\ \ \ True,\
-\ \ \ \ \},\
-\ \ \ \ \{\
-\ \ \ \ \ \ \ \ 't_arrays':\ \ \ \ \ \[t0,\ t1\],\
-\ \ \ \ \ \ \ \ 'x_arrays':\ \ \ \ \ \[t0,\ t1\],\
-\ \ \ \ \ \ \ \ 'y_arrays':\ \ \ \ \ \[r0\[:,\ 1\],\ r1\[:,\ 1\]\],\
-\ \ \ \ \ \ \ \ 'xlabel':\ \ \ \ \ \ \ 'Time\ \[s\]',\
-\ \ \ \ \ \ \ \ 'ylabel':\ \ \ \ \ \ \ 'North\ Displacement\ y\ \[m\]',\
-\ \ \ \ \ \ \ \ 'ylabel_short':\ 'y\ \[m\]:',\
-\ \ \ \ \ \ \ \ 'title':\ \ \ \ \ \ \ \ 'North\ Displacement\ vs\ Time',\
-\ \ \ \ \ \ \ \ 'time_based':\ \ \ True,\
-\ \ \ \ \},\
-\ \ \ \ \{\
-\ \ \ \ \ \ \ \ \#\ x\ vs\ y\ ground\ track;\ click\ tooltip\ uses\ 2D\ distance,\ not\ time\
-\ \ \ \ \ \ \ \ 't_arrays':\ \ \ \ \ \[t0,\ t1\],\
-\ \ \ \ \ \ \ \ 'x_arrays':\ \ \ \ \ \[r0\[:,\ 0\],\ r1\[:,\ 0\]\],\
-\ \ \ \ \ \ \ \ 'y_arrays':\ \ \ \ \ \[r0\[:,\ 1\],\ r1\[:,\ 1\]\],\
-\ \ \ \ \ \ \ \ 'xlabel':\ \ \ \ \ \ \ 'East\ x\ \[m\]',\
-\ \ \ \ \ \ \ \ 'ylabel':\ \ \ \ \ \ \ 'North\ y\ \[m\]',\
-\ \ \ \ \ \ \ \ 'ylabel_short':\ 'y\ \[m\]:',\
-\ \ \ \ \ \ \ \ 'title':\ \ \ \ \ \ \ \ 'Horizontal\ Projection\ \(y\ vs\ x\)',\
-\ \ \ \ \ \ \ \ 'time_based':\ \ \ False,\
-\ \ \ \ \},\
-\]\
-\
-plot_comparison\(\
-\ \ \ \ panels,\ LABELS,\ COLORS,\ LINESTYLES,\
-\ \ \ \ suptitle='Task\ 4\.2\ —\ Effect\ of\ Coriolis\ Force\ on\ Trajectory',\
-\ \ \ \ annotation=annotation,\
-\)
+
+"""
+Task 4.2 — Remove Coriolis Force
+Compare omega = OMEGA_EARTH (base) vs omega = 0 (Coriolis disabled)
+"""
+import sys
+import numpy as np
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+from rocket_simulation import (
+    simulate_rocket, compute_metrics, print_metrics,
+    OMEGA_EARTH, C_NAVY, C_GOLD,
+)
+from plot_utils import plot_comparison
+
+# two cases: real Earth rotation vs. no rotation
+OMEGA_CASES = [OMEGA_EARTH, 0.0]
+LABELS      = ['Coriolis ON (base)', 'Coriolis OFF (omega=0)']
+COLORS      = [C_NAVY, C_GOLD]
+LINESTYLES  = ['--', '-']
+
+print("=" * 60)
+print("  TASK 4.2 — CORIOLIS FORCE REMOVAL")
+print("=" * 60)
+
+results      = []
+metrics_list = []
+for omega, label in zip(OMEGA_CASES, LABELS):
+    print(f"\n>>> Running: {label}  (omega = {omega:.2e} rad/s)")
+    t, r, v, drag, mass, accel = simulate_rocket(omega=omega)
+    m_obj = compute_metrics(t, r, v)
+    results.append((t, r, v, drag, mass, accel))
+    metrics_list.append(m_obj)
+    print_metrics(m_obj, label)
+
+print("\n" + "=" * 60)
+print("  TASK 4.2 — ANSWERS")
+print("=" * 60)
+
+m_on  = metrics_list[0]
+m_off = metrics_list[1]
+
+print("\n1. HOW DOES THE TRAJECTORY CHANGE?")
+print(f"   Coriolis ON:  landing x (East)  = {m_on['x_land']:+.4f} m")
+print(f"   Coriolis ON:  landing y (North) = {m_on['y_land']:+.4f} m")
+print(f"   Coriolis OFF: landing x (East)  = {m_off['x_land']:+.4f} m")
+print(f"   Coriolis OFF: landing y (North) = {m_off['y_land']:+.4f} m")
+print(f"   Horizontal range with Coriolis:    {m_on['range']:.4f} m")
+print(f"   Horizontal range without Coriolis: {m_off['range']:.4f} m")
+print("   The Coriolis force deflects the rocket WESTWARD (-x) during ascent.")
+print("   On descent (vz < 0), it deflects EASTWARD, partially cancelling.")
+print("   Net effect: small westward shift at the landing site.")
+
+print("\n2. WHICH DIRECTION IS MOST AFFECTED?")
+print("   At the equator, the Coriolis acceleration is:")
+print("     a_Cx = -2 * omega * vz   [East-West component]")
+print("     a_Cy =  0                [North-South — zero at equator]")
+print("     a_Cz = +2 * omega * vx   [Vertical — small, since vx remains small]")
+print("   -> EAST-WEST (x) direction is most affected.")
+print("   -> Rising rocket (vz > 0) deflects west; descending (vz < 0) deflects east.")
+print(f"   Net west deflection: {abs(m_on['x_land']):.4f} m")
+print(f"   North deviation:     {abs(m_on['y_land']):.4e} m  (effectively zero)")
+
+# text box shown in the first plot panel
+annotation = (
+    f"Landing displacement:\n"
+    f"  Coriolis ON:  x={m_on['x_land']:+.4f}m  y={m_on['y_land']:+.2e}m\n"
+    f"  Coriolis OFF: x={m_off['x_land']:+.4f}m  y={m_off['y_land']:+.2e}m\n"
+    f"Most affected: East-West (x)\n"
+    f"  a_Cx = -2*omega*vz  (west when rising)"
+)
+
+# unpack trajectories for both cases
+t0, r0 = results[0][0], results[0][1]
+t1, r1 = results[1][0], results[1][1]
+
+# four panels: altitude, east displacement, north displacement, horizontal projection
+panels = [
+    {
+        't_arrays':     [t0, t1],
+        'x_arrays':     [t0, t1],
+        'y_arrays':     [r0[:, 2], r1[:, 2]],
+        'xlabel':       'Time [s]',
+        'ylabel':       'Altitude [m]',
+        'ylabel_short': 'z [m]:',
+        'title':        'Altitude vs Time',
+        'time_based':   True,
+    },
+    {
+        't_arrays':     [t0, t1],
+        'x_arrays':     [t0, t1],
+        'y_arrays':     [r0[:, 0], r1[:, 0]],
+        'xlabel':       'Time [s]',
+        'ylabel':       'East Displacement x [m]',
+        'ylabel_short': 'x [m]:',
+        'title':        'East Displacement vs Time',
+        'time_based':   True,
+    },
+    {
+        't_arrays':     [t0, t1],
+        'x_arrays':     [t0, t1],
+        'y_arrays':     [r0[:, 1], r1[:, 1]],
+        'xlabel':       'Time [s]',
+        'ylabel':       'North Displacement y [m]',
+        'ylabel_short': 'y [m]:',
+        'title':        'North Displacement vs Time',
+        'time_based':   True,
+    },
+    {
+        # x vs y ground track; click tooltip uses 2D distance, not time
+        't_arrays':     [t0, t1],
+        'x_arrays':     [r0[:, 0], r1[:, 0]],
+        'y_arrays':     [r0[:, 1], r1[:, 1]],
+        'xlabel':       'East x [m]',
+        'ylabel':       'North y [m]',
+        'ylabel_short': 'y [m]:',
+        'title':        'Horizontal Projection (y vs x)',
+        'time_based':   False,
+    },
+]
+
+plot_comparison(
+    panels, LABELS, COLORS, LINESTYLES,
+    suptitle='Task 4.2 — Effect of Coriolis Force on Trajectory',
+    annotation=annotation,
+)
 </script>
 
 <script type="text/x-source" id="src-task_4_3">
-"""\
-Task\ 4\.3\ —\ Simplified\ Atmosphere\
-Compare\ ISA\ multi\-layer\ model\ vs\ single\-exponential\ rho\(z\)\ =\ rho0\ \*\ exp\(\-z/H\)\
-"""\
-import\ sys\
-import\ numpy\ as\ np\
-\
-if\ hasattr\(sys\.stdout,\ 'reconfigure'\):\
-\ \ \ \ sys\.stdout\.reconfigure\(encoding='utf\-8',\ errors='replace'\)\
-if\ hasattr\(sys\.stderr,\ 'reconfigure'\):\
-\ \ \ \ sys\.stderr\.reconfigure\(encoding='utf\-8',\ errors='replace'\)\
-\
-from\ rocket_simulation\ import\ \(\
-\ \ \ \ simulate_rocket,\ compute_metrics,\ print_metrics,\
-\ \ \ \ density_isa,\ density_exponential,\
-\ \ \ \ RHO0,\ H_SCALE,\ C_NAVY,\ C_GOLD,\
-\)\
-from\ plot_utils\ import\ plot_comparison\
-\
-\#\ two\ atmosphere\ models\ to\ compare\
-DENSITY_CASES\ =\ \[density_isa,\ density_exponential\]\
-LABELS\ \ \ \ \ \ \ \ =\ \['ISA\ \(multi\-layer\)',\ 'Exponential\ \(approx\)'\]\
-COLORS\ \ \ \ \ \ \ \ =\ \[C_NAVY,\ C_GOLD\]\
-LINESTYLES\ \ \ \ =\ \['\-\-',\ '\-'\]\
-\
-print\("="\ \*\ 60\)\
-print\("\ \ TASK\ 4\.3\ —\ ATMOSPHERE\ MODEL\ COMPARISON"\)\
-print\("="\ \*\ 60\)\
-\
-results\ \ \ \ \ \ =\ \[\]\
-metrics_list\ =\ \[\]\
-for\ density_func,\ label\ in\ zip\(DENSITY_CASES,\ LABELS\):\
-\ \ \ \ print\(f"\n>>>\ Running:\ \{label\}\ \.\.\."\)\
-\ \ \ \ t,\ r,\ v,\ drag,\ mass,\ accel\ =\ simulate_rocket\(density_func=density_func\)\
-\ \ \ \ m_obj\ =\ compute_metrics\(t,\ r,\ v\)\
-\ \ \ \ results\.append\(\(t,\ r,\ v,\ drag,\ mass,\ accel\)\)\
-\ \ \ \ metrics_list\.append\(m_obj\)\
-\ \ \ \ print_metrics\(m_obj,\ label\)\
-\
-\#\ spot\-check\ densities\ at\ several\ altitudes\ to\ see\ where\ the\ models\ diverge\
-print\("\n"\ \+\ "="\ \*\ 60\)\
-print\("\ \ DENSITY\ COMPARISON\ AT\ KEY\ ALTITUDES"\)\
-print\("="\ \*\ 60\)\
-print\(f"\ \ \{'Altitude':>12\}\ \ \{'ISA\ \[kg/m3\]':>14\}\ \ \{'Exp\ \[kg/m3\]':>14\}\ \ \{'Exp/ISA':>10\}"\)\
-print\(f"\ \ \{'\-'\*12\}\ \ \{'\-'\*14\}\ \ \{'\-'\*14\}\ \ \{'\-'\*10\}"\)\
-for\ alt_km\ in\ \[0,\ 2,\ 5,\ 8,\ 11,\ 15,\ 20,\ 30\]:\
-\ \ \ \ alt_m\ \ \ =\ alt_km\ \*\ 1000\.0\
-\ \ \ \ rho_isa\ =\ density_isa\(alt_m\)\
-\ \ \ \ rho_exp\ =\ density_exponential\(alt_m\)\
-\ \ \ \ ratio\ \ \ =\ rho_exp\ /\ rho_isa\
-\ \ \ \ print\(f"\ \ \{alt_km:>10\}\ km\ \ \{rho_isa:>14\.4e\}\ \ \{rho_exp:>14\.4e\}\ \ \{ratio:>10\.4f\}"\)\
-\
-print\("\n"\ \+\ "="\ \*\ 60\)\
-print\("\ \ TASK\ 4\.3\ —\ ANSWERS"\)\
-print\("="\ \*\ 60\)\
-\
-m_isa\ =\ metrics_list\[0\]\
-m_exp\ =\ metrics_list\[1\]\
-delta_z\ =\ m_exp\['z_max'\]\ \-\ m_isa\['z_max'\]\
-\
-print\("\n1\.\ COMPARE\ MAXIMUM\ ALTITUDE:"\)\
-print\(f"\ \ \ ISA\ \(multi\-layer\):\ z_max\ =\ \{m_isa\['z_max'\]/1000:\.3f\}\ km"\)\
-print\(f"\ \ \ Exponential:\ \ \ \ \ \ \ z_max\ =\ \{m_exp\['z_max'\]/1000:\.3f\}\ km"\)\
-print\(f"\ \ \ Difference:\ \ \ \ \ \ \ \ Delta\ =\ \{delta_z/1000:\+\.3f\}\ km"\)\
-if\ delta_z\ >\ 0:\
-\ \ \ \ print\("\ \ \ Exponential\ gives\ higher\ apogee:\ it\ predicts\ lower\ density\ above\ \~5\ km,"\)\
-\ \ \ \ print\("\ \ \ so\ the\ rocket\ experiences\ less\ drag\ and\ reaches\ a\ higher\ altitude\."\)\
-else:\
-\ \ \ \ print\("\ \ \ ISA\ gives\ higher\ apogee:\ the\ exponential\ model\ over\-predicts\ density"\)\
-\ \ \ \ print\("\ \ \ at\ mid\-altitudes,\ causing\ more\ drag\ and\ a\ lower\ apogee\."\)\
-\
-print\("\n2\.\ COMPARE\ DRAG\ EVOLUTION:"\)\
-print\("\ \ \ Both\ models\ agree\ at\ sea\ level:\ rho\(0\)\ =\ 1\.225\ kg/m3\."\)\
-print\("\ \ \ ISA\ has\ a\ kink\ at\ 11\ km\ \(tropopause\):\ temperature\ becomes\ isothermal,"\)\
-print\("\ \ \ so\ density\ drops\ more\ slowly\ —\ the\ ISA\ is\ denser\ than\ exponential\ above\ \~7\ km\."\)\
-print\("\ \ \ Exponential\ decreases\ monotonically;\ its\ derivative\ is\ everywhere\ continuous\."\)\
-print\("\ \ \ Consequence:\ with\ ISA\ the\ rocket\ faces\ more\ drag\ in\ the\ 5\-15\ km\ range\."\)\
-\
-print\("\n3\.\ WHICH\ MODEL\ IS\ MORE\ REALISTIC\?"\)\
-print\("\ \ \ The\ ISA\ multi\-layer\ model\ is\ more\ realistic\."\)\
-print\("\ \ \ \-\ It\ captures\ the\ temperature\ inversion\ at\ the\ tropopause\ \(11\ km\)\."\)\
-print\("\ \ \ \-\ It\ models\ stratospheric\ warming\ correctly\ above\ 20\ km\."\)\
-print\("\ \ \ \-\ It\ matches\ measured\ density\ profiles\ to\ <\ 1%\ up\ to\ 85\ km\."\)\
-print\("\ \ \ The\ exponential\ model\ \(scale\ height\ H\ =\ 8500\ m\)\ is\ a\ useful"\)\
-print\("\ \ \ approximation\ for\ rough\ calculations,\ but\ underestimates\ density"\)\
-print\("\ \ \ in\ the\ lower\ stratosphere\ and\ overestimates\ it\ above\ \~15\ km\."\)\
-\
-\#\ text\ box\ shown\ in\ the\ first\ plot\ panel\
-annotation\ =\ \(\
-\ \ \ \ f"Max\ altitude\ comparison:\n"\
-\ \ \ \ f"\ \ ISA:\ \ \{m_isa\['z_max'\]/1000:\.3f\}\ km\n"\
-\ \ \ \ f"\ \ Exp:\ \ \{m_exp\['z_max'\]/1000:\.3f\}\ km\n"\
-\ \ \ \ f"\ \ Delta\ =\ \{delta_z/1000:\+\.3f\}\ km\n"\
-\ \ \ \ f"rho0\ =\ \{RHO0:\.3f\}\ kg/m3\ \ \ H\ =\ \{H_SCALE:\.0f\}\ m"\
-\)\
-\
-\#\ density\ sampled\ along\ each\ trajectory\ \(used\ in\ the\ last\ panel\)\
-t0,\ r0\ =\ results\[0\]\[0\],\ results\[0\]\[1\]\
-t1,\ r1\ =\ results\[1\]\[0\],\ results\[1\]\[1\]\
-\
-rho_isa_arr\ =\ np\.array\(\[density_isa\(max\(float\(z\),\ 0\.0\)\)\ \ \ \ \ \ \ \ \ for\ z\ in\ r0\[:,\ 2\]\]\)\
-rho_exp_arr\ =\ np\.array\(\[density_exponential\(max\(float\(z\),\ 0\.0\)\)\ for\ z\ in\ r1\[:,\ 2\]\]\)\
-\
-\#\ four\ panels:\ altitude,\ drag,\ speed,\ density\ experienced\
-panels\ =\ \[\
-\ \ \ \ \{\
-\ \ \ \ \ \ \ \ 't_arrays':\ \ \ \ \ \[t0,\ t1\],\
-\ \ \ \ \ \ \ \ 'x_arrays':\ \ \ \ \ \[t0,\ t1\],\
-\ \ \ \ \ \ \ \ 'y_arrays':\ \ \ \ \ \[r0\[:,\ 2\],\ r1\[:,\ 2\]\],\
-\ \ \ \ \ \ \ \ 'xlabel':\ \ \ \ \ \ \ 'Time\ \[s\]',\
-\ \ \ \ \ \ \ \ 'ylabel':\ \ \ \ \ \ \ 'Altitude\ \[m\]',\
-\ \ \ \ \ \ \ \ 'ylabel_short':\ 'z\ \[m\]:',\
-\ \ \ \ \ \ \ \ 'title':\ \ \ \ \ \ \ \ 'Altitude\ vs\ Time',\
-\ \ \ \ \ \ \ \ 'time_based':\ \ \ True,\
-\ \ \ \ \},\
-\ \ \ \ \{\
-\ \ \ \ \ \ \ \ 't_arrays':\ \ \ \ \ \[t0,\ t1\],\
-\ \ \ \ \ \ \ \ 'x_arrays':\ \ \ \ \ \[t0,\ t1\],\
-\ \ \ \ \ \ \ \ 'y_arrays':\ \ \ \ \ \[results\[0\]\[3\],\ results\[1\]\[3\]\],\
-\ \ \ \ \ \ \ \ 'xlabel':\ \ \ \ \ \ \ 'Time\ \[s\]',\
-\ \ \ \ \ \ \ \ 'ylabel':\ \ \ \ \ \ \ 'Drag\ Force\ \[N\]',\
-\ \ \ \ \ \ \ \ 'ylabel_short':\ 'D\ \[N\]:',\
-\ \ \ \ \ \ \ \ 'title':\ \ \ \ \ \ \ \ 'Aerodynamic\ Drag\ vs\ Time',\
-\ \ \ \ \ \ \ \ 'time_based':\ \ \ True,\
-\ \ \ \ \},\
-\ \ \ \ \{\
-\ \ \ \ \ \ \ \ 't_arrays':\ \ \ \ \ \[t0,\ t1\],\
-\ \ \ \ \ \ \ \ 'x_arrays':\ \ \ \ \ \[t0,\ t1\],\
-\ \ \ \ \ \ \ \ 'y_arrays':\ \ \ \ \ \[np\.linalg\.norm\(results\[0\]\[2\],\ axis=1\),\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ np\.linalg\.norm\(results\[1\]\[2\],\ axis=1\)\],\
-\ \ \ \ \ \ \ \ 'xlabel':\ \ \ \ \ \ \ 'Time\ \[s\]',\
-\ \ \ \ \ \ \ \ 'ylabel':\ \ \ \ \ \ \ 'Speed\ \[m/s\]',\
-\ \ \ \ \ \ \ \ 'ylabel_short':\ 'v\ \[m/s\]:',\
-\ \ \ \ \ \ \ \ 'title':\ \ \ \ \ \ \ \ 'Speed\ vs\ Time',\
-\ \ \ \ \ \ \ \ 'time_based':\ \ \ True,\
-\ \ \ \ \},\
-\ \ \ \ \{\
-\ \ \ \ \ \ \ \ \#\ density\ each\ rocket\ actually\ flew\ through,\ not\ a\ static\ profile\
-\ \ \ \ \ \ \ \ 't_arrays':\ \ \ \ \ \[t0,\ t1\],\
-\ \ \ \ \ \ \ \ 'x_arrays':\ \ \ \ \ \[t0,\ t1\],\
-\ \ \ \ \ \ \ \ 'y_arrays':\ \ \ \ \ \[rho_isa_arr,\ rho_exp_arr\],\
-\ \ \ \ \ \ \ \ 'xlabel':\ \ \ \ \ \ \ 'Time\ \[s\]',\
-\ \ \ \ \ \ \ \ 'ylabel':\ \ \ \ \ \ \ 'Air\ Density\ \[kg/m3\]',\
-\ \ \ \ \ \ \ \ 'ylabel_short':\ 'rho:',\
-\ \ \ \ \ \ \ \ 'title':\ \ \ \ \ \ \ \ 'Air\ Density\ Experienced\ vs\ Time',\
-\ \ \ \ \ \ \ \ 'time_based':\ \ \ True,\
-\ \ \ \ \},\
-\]\
-\
-plot_comparison\(\
-\ \ \ \ panels,\ LABELS,\ COLORS,\ LINESTYLES,\
-\ \ \ \ suptitle='Task\ 4\.3\ —\ ISA\ vs\ Exponential\ Atmosphere\ Model',\
-\ \ \ \ annotation=annotation,\
-\)
+"""
+Task 4.3 — Simplified Atmosphere
+Compare ISA multi-layer model vs single-exponential rho(z) = rho0 * exp(-z/H)
+"""
+import sys
+import numpy as np
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+from rocket_simulation import (
+    simulate_rocket, compute_metrics, print_metrics,
+    density_isa, density_exponential,
+    RHO0, H_SCALE, C_NAVY, C_GOLD,
+)
+from plot_utils import plot_comparison
+
+# two atmosphere models to compare
+DENSITY_CASES = [density_isa, density_exponential]
+LABELS        = ['ISA (multi-layer)', 'Exponential (approx)']
+COLORS        = [C_NAVY, C_GOLD]
+LINESTYLES    = ['--', '-']
+
+print("=" * 60)
+print("  TASK 4.3 — ATMOSPHERE MODEL COMPARISON")
+print("=" * 60)
+
+results      = []
+metrics_list = []
+for density_func, label in zip(DENSITY_CASES, LABELS):
+    print(f"\n>>> Running: {label} ...")
+    t, r, v, drag, mass, accel = simulate_rocket(density_func=density_func)
+    m_obj = compute_metrics(t, r, v)
+    results.append((t, r, v, drag, mass, accel))
+    metrics_list.append(m_obj)
+    print_metrics(m_obj, label)
+
+# spot-check densities at several altitudes to see where the models diverge
+print("\n" + "=" * 60)
+print("  DENSITY COMPARISON AT KEY ALTITUDES")
+print("=" * 60)
+print(f"  {'Altitude':>12}  {'ISA [kg/m3]':>14}  {'Exp [kg/m3]':>14}  {'Exp/ISA':>10}")
+print(f"  {'-'*12}  {'-'*14}  {'-'*14}  {'-'*10}")
+for alt_km in [0, 2, 5, 8, 11, 15, 20, 30]:
+    alt_m   = alt_km * 1000.0
+    rho_isa = density_isa(alt_m)
+    rho_exp = density_exponential(alt_m)
+    ratio   = rho_exp / rho_isa
+    print(f"  {alt_km:>10} km  {rho_isa:>14.4e}  {rho_exp:>14.4e}  {ratio:>10.4f}")
+
+print("\n" + "=" * 60)
+print("  TASK 4.3 — ANSWERS")
+print("=" * 60)
+
+m_isa = metrics_list[0]
+m_exp = metrics_list[1]
+delta_z = m_exp['z_max'] - m_isa['z_max']
+
+print("\n1. COMPARE MAXIMUM ALTITUDE:")
+print(f"   ISA (multi-layer): z_max = {m_isa['z_max']/1000:.3f} km")
+print(f"   Exponential:       z_max = {m_exp['z_max']/1000:.3f} km")
+print(f"   Difference:        Delta = {delta_z/1000:+.3f} km")
+if delta_z > 0:
+    print("   Exponential gives higher apogee: it predicts lower density above ~5 km,")
+    print("   so the rocket experiences less drag and reaches a higher altitude.")
+else:
+    print("   ISA gives higher apogee: the exponential model over-predicts density")
+    print("   at mid-altitudes, causing more drag and a lower apogee.")
+
+print("\n2. COMPARE DRAG EVOLUTION:")
+print("   Both models agree at sea level: rho(0) = 1.225 kg/m3.")
+print("   ISA has a kink at 11 km (tropopause): temperature becomes isothermal,")
+print("   so density drops more slowly — the ISA is denser than exponential above ~7 km.")
+print("   Exponential decreases monotonically; its derivative is everywhere continuous.")
+print("   Consequence: with ISA the rocket faces more drag in the 5-15 km range.")
+
+print("\n3. WHICH MODEL IS MORE REALISTIC?")
+print("   The ISA multi-layer model is more realistic.")
+print("   - It captures the temperature inversion at the tropopause (11 km).")
+print("   - It models stratospheric warming correctly above 20 km.")
+print("   - It matches measured density profiles to < 1% up to 85 km.")
+print("   The exponential model (scale height H = 8500 m) is a useful")
+print("   approximation for rough calculations, but underestimates density")
+print("   in the lower stratosphere and overestimates it above ~15 km.")
+
+# text box shown in the first plot panel
+annotation = (
+    f"Max altitude comparison:\n"
+    f"  ISA:  {m_isa['z_max']/1000:.3f} km\n"
+    f"  Exp:  {m_exp['z_max']/1000:.3f} km\n"
+    f"  Delta = {delta_z/1000:+.3f} km\n"
+    f"rho0 = {RHO0:.3f} kg/m3   H = {H_SCALE:.0f} m"
+)
+
+# density sampled along each trajectory (used in the last panel)
+t0, r0 = results[0][0], results[0][1]
+t1, r1 = results[1][0], results[1][1]
+
+rho_isa_arr = np.array([density_isa(max(float(z), 0.0))         for z in r0[:, 2]])
+rho_exp_arr = np.array([density_exponential(max(float(z), 0.0)) for z in r1[:, 2]])
+
+# four panels: altitude, drag, speed, density experienced
+panels = [
+    {
+        't_arrays':     [t0, t1],
+        'x_arrays':     [t0, t1],
+        'y_arrays':     [r0[:, 2], r1[:, 2]],
+        'xlabel':       'Time [s]',
+        'ylabel':       'Altitude [m]',
+        'ylabel_short': 'z [m]:',
+        'title':        'Altitude vs Time',
+        'time_based':   True,
+    },
+    {
+        't_arrays':     [t0, t1],
+        'x_arrays':     [t0, t1],
+        'y_arrays':     [results[0][3], results[1][3]],
+        'xlabel':       'Time [s]',
+        'ylabel':       'Drag Force [N]',
+        'ylabel_short': 'D [N]:',
+        'title':        'Aerodynamic Drag vs Time',
+        'time_based':   True,
+    },
+    {
+        't_arrays':     [t0, t1],
+        'x_arrays':     [t0, t1],
+        'y_arrays':     [np.linalg.norm(results[0][2], axis=1),
+                         np.linalg.norm(results[1][2], axis=1)],
+        'xlabel':       'Time [s]',
+        'ylabel':       'Speed [m/s]',
+        'ylabel_short': 'v [m/s]:',
+        'title':        'Speed vs Time',
+        'time_based':   True,
+    },
+    {
+        # density each rocket actually flew through, not a static profile
+        't_arrays':     [t0, t1],
+        'x_arrays':     [t0, t1],
+        'y_arrays':     [rho_isa_arr, rho_exp_arr],
+        'xlabel':       'Time [s]',
+        'ylabel':       'Air Density [kg/m3]',
+        'ylabel_short': 'rho:',
+        'title':        'Air Density Experienced vs Time',
+        'time_based':   True,
+    },
+]
+
+plot_comparison(
+    panels, LABELS, COLORS, LINESTYLES,
+    suptitle='Task 4.3 — ISA vs Exponential Atmosphere Model',
+    annotation=annotation,
+)
 </script>
 
 <script type="text/x-source" id="src-task_4_4">
-"""\
-Task\ 4\.4\ —\ Propellant\ Mass\ Variation\
-Change\ propellant\ mass:\ 10\ kg\ \->\ 50\ kg\ \->\ 90\ kg\
-"""\
-import\ sys\
-import\ numpy\ as\ np\
-\
-if\ hasattr\(sys\.stdout,\ 'reconfigure'\):\
-\ \ \ \ sys\.stdout\.reconfigure\(encoding='utf\-8',\ errors='replace'\)\
-if\ hasattr\(sys\.stderr,\ 'reconfigure'\):\
-\ \ \ \ sys\.stderr\.reconfigure\(encoding='utf\-8',\ errors='replace'\)\
-\
-from\ rocket_simulation\ import\ \(\
-\ \ \ \ simulate_rocket,\ compute_metrics,\ print_metrics,\
-\ \ \ \ T0,\ ISP,\ MP,\ G0,\
-\ \ \ \ C_NAVY,\ C_BLUE,\ C_LTBLUE,\
-\)\
-from\ plot_utils\ import\ plot_comparison\
-\
-\#\ three\ propellant\ loads;\ thrust\ and\ Isp\ stay\ fixed\
-PROP_MASSES\ =\ \[10\.0,\ 50\.0,\ 90\.0\]\
-LABELS\ \ \ \ \ \ =\ \['m_prop\ =\ 10\ kg',\ 'm_prop\ =\ 50\ kg',\ 'm_prop\ =\ 90\ kg'\]\
-COLORS\ \ \ \ \ \ =\ \[C_LTBLUE,\ C_BLUE,\ C_NAVY\]\
-LINESTYLES\ \ =\ \['\-',\ '\-\-',\ ':'\]\
-\
-MDOT\ =\ T0\ /\ \(G0\ \*\ ISP\)\ \ \ \#\ mass\ flow\ rate\ \[kg/s\]\ —\ same\ for\ all\ cases\ \(fixed\ thrust\)\
-\
-print\("="\ \*\ 60\)\
-print\("\ \ TASK\ 4\.4\ —\ PROPELLANT\ MASS\ VARIATION"\)\
-print\("="\ \*\ 60\)\
-print\(f"\ \ Fixed\ thrust\ \ :\ T\ \ \ =\ \{T0:\.0f\}\ N"\)\
-print\(f"\ \ Fixed\ Isp\ \ \ \ \ :\ Isp\ =\ \{ISP:\.0f\}\ s"\)\
-print\(f"\ \ Mass\ flow\ rate:\ mdot\ =\ T/\(g0\*Isp\)\ =\ \{MDOT:\.4f\}\ kg/s\ \ \(same\ for\ all\ cases\)"\)\
-print\(f"\ \ Payload\ mass\ \ :\ MP\ \ =\ \{MP:\.0f\}\ kg"\)\
-\
-results\ \ \ \ \ \ =\ \[\]\
-metrics_list\ =\ \[\]\
-for\ mp_mass\ in\ PROP_MASSES:\
-\ \ \ \ m_initial\ =\ MP\ \+\ mp_mass\
-\ \ \ \ t_burn\ \ \ \ =\ mp_mass\ /\ MDOT\
-\ \ \ \ a0\ \ \ \ \ \ \ \ =\ T0\ /\ m_initial\ \-\ G0\ \ \ \#\ net\ initial\ upward\ acceleration\
-\ \ \ \ print\(f"\n>>>\ m_prop\ =\ \{mp_mass:\.0f\}\ kg\ \ \(m0\ =\ \{m_initial:\.0f\}\ kg,\ "\
-\ \ \ \ \ \ \ \ \ \ f"t_burn\ =\ \{t_burn:\.2f\}\ s,\ a0\ =\ \{a0:\.2f\}\ m/s2\)"\)\
-\ \ \ \ t,\ r,\ v,\ drag,\ mass,\ accel\ =\ simulate_rocket\(m_propellant=mp_mass\)\
-\ \ \ \ m_obj\ =\ compute_metrics\(t,\ r,\ v\)\
-\ \ \ \ results\.append\(\(t,\ r,\ v,\ drag,\ mass,\ accel\)\)\
-\ \ \ \ metrics_list\.append\(m_obj\)\
-\ \ \ \ print_metrics\(m_obj,\ f"m_prop\ =\ \{mp_mass:\.0f\}\ kg\ \ \(m0\ =\ \{m_initial:\.0f\}\ kg\)"\)\
-\
-print\("\n"\ \+\ "="\ \*\ 60\)\
-print\("\ \ TASK\ 4\.4\ —\ ANSWERS"\)\
-print\("="\ \*\ 60\)\
-\
-print\("\n1\.\ HOW\ DOES\ ACCELERATION\ CHANGE\?"\)\
-print\("\ \ \ Net\ initial\ acceleration:\ a0\ =\ T/m0\ \-\ g0"\)\
-print\("\ \ \ Smaller\ propellant\ mass\ \->\ lighter\ rocket\ \->\ higher\ initial\ a0\."\)\
-print\("\ \ \ BUT\ total\ impulse\ =\ T\ \*\ t_burn\ is\ lower\ \->\ less\ delta\-v\ overall\."\)\
-for\ mp_mass,\ m_obj\ in\ zip\(PROP_MASSES,\ metrics_list\):\
-\ \ \ \ m_initial\ =\ MP\ \+\ mp_mass\
-\ \ \ \ t_burn\ \ \ \ =\ mp_mass\ /\ MDOT\
-\ \ \ \ a0\ \ \ \ \ \ \ \ =\ T0\ /\ m_initial\ \-\ G0\
-\ \ \ \ print\(f"\ \ \ m_prop\ =\ \{mp_mass:2\.0f\}\ kg\ \ \->\ \ m0\ =\ \{m_initial:3\.0f\}\ kg\ \ "\
-\ \ \ \ \ \ \ \ \ \ f"a0\ =\ \{a0:6\.2f\}\ m/s2\ \ t_burn\ =\ \{t_burn:\.2f\}\ s\ \ "\
-\ \ \ \ \ \ \ \ \ \ f"z_max\ =\ \{m_obj\['z_max'\]/1000:\.2f\}\ km"\)\
-\
-print\("\n2\.\ HOW\ DOES\ BURNOUT\ ALTITUDE\ CHANGE\?"\)\
-print\("\ \ \ Burnout\ altitude\ =\ altitude\ at\ t\ =\ t_burn\ \(when\ propellant\ is\ exhausted\)\."\)\
-for\ mp_mass,\ result\ in\ zip\(PROP_MASSES,\ results\):\
-\ \ \ \ t_arr,\ r_arr\ =\ result\[0\],\ result\[1\]\
-\ \ \ \ t_burn\ \ \ =\ mp_mass\ /\ MDOT\
-\ \ \ \ idx_burn\ =\ int\(np\.argmin\(np\.abs\(t_arr\ \-\ t_burn\)\)\)\
-\ \ \ \ z_burn\ \ \ =\ r_arr\[idx_burn,\ 2\]\
-\ \ \ \ print\(f"\ \ \ m_prop\ =\ \{mp_mass:2\.0f\}\ kg\ \ \->\ \ t_burn\ =\ \{t_burn:\.2f\}\ s\ \ "\
-\ \ \ \ \ \ \ \ \ \ f"z_burn\ =\ \{z_burn:\.1f\}\ m"\)\
-print\("\ \ \ More\ propellant\ \->\ longer\ burn\ \->\ higher\ burnout\ altitude,"\)\
-print\("\ \ \ even\ though\ initial\ acceleration\ is\ lower\ \(heavier\ rocket\)\."\)\
-print\("\ \ \ After\ burnout\ the\ rocket\ coasts\ ballistically\ to\ apogee\."\)\
-\
-\#\ text\ box\ shown\ in\ the\ first\ plot\ panel\
-ann_lines\ =\ \["Initial\ acc\.\ \&\ max\ altitude:"\]\
-for\ mp_mass,\ m_obj\ in\ zip\(PROP_MASSES,\ metrics_list\):\
-\ \ \ \ m_initial\ =\ MP\ \+\ mp_mass\
-\ \ \ \ a0\ \ \ \ \ \ \ \ =\ T0\ /\ m_initial\ \-\ G0\
-\ \ \ \ ann_lines\.append\(\
-\ \ \ \ \ \ \ \ f"\ \ \{mp_mass:\.0f\}kg:\ a0=\{a0:\.1f\}m/s2\ \ z_max=\{m_obj\['z_max'\]/1000:\.2f\}km"\
-\ \ \ \ \)\
-annotation\ =\ "\n"\.join\(ann_lines\)\
-\
-\#\ four\ panels:\ altitude,\ speed,\ mass,\ acceleration\
-panels\ =\ \[\
-\ \ \ \ \{\
-\ \ \ \ \ \ \ \ 't_arrays':\ \ \ \ \ \[results\[i\]\[0\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'x_arrays':\ \ \ \ \ \[results\[i\]\[0\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'y_arrays':\ \ \ \ \ \[results\[i\]\[1\]\[:,\ 2\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'xlabel':\ \ \ \ \ \ \ 'Time\ \[s\]',\
-\ \ \ \ \ \ \ \ 'ylabel':\ \ \ \ \ \ \ 'Altitude\ \[m\]',\
-\ \ \ \ \ \ \ \ 'ylabel_short':\ 'z\ \[m\]:',\
-\ \ \ \ \ \ \ \ 'title':\ \ \ \ \ \ \ \ 'Altitude\ vs\ Time',\
-\ \ \ \ \ \ \ \ 'time_based':\ \ \ True,\
-\ \ \ \ \},\
-\ \ \ \ \{\
-\ \ \ \ \ \ \ \ 't_arrays':\ \ \ \ \ \[results\[i\]\[0\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'x_arrays':\ \ \ \ \ \[results\[i\]\[0\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'y_arrays':\ \ \ \ \ \[np\.linalg\.norm\(results\[i\]\[2\],\ axis=1\)\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'xlabel':\ \ \ \ \ \ \ 'Time\ \[s\]',\
-\ \ \ \ \ \ \ \ 'ylabel':\ \ \ \ \ \ \ 'Speed\ \[m/s\]',\
-\ \ \ \ \ \ \ \ 'ylabel_short':\ 'v\ \[m/s\]:',\
-\ \ \ \ \ \ \ \ 'title':\ \ \ \ \ \ \ \ 'Speed\ vs\ Time',\
-\ \ \ \ \ \ \ \ 'time_based':\ \ \ True,\
-\ \ \ \ \},\
-\ \ \ \ \{\
-\ \ \ \ \ \ \ \ 't_arrays':\ \ \ \ \ \[results\[i\]\[0\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'x_arrays':\ \ \ \ \ \[results\[i\]\[0\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'y_arrays':\ \ \ \ \ \[results\[i\]\[4\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'xlabel':\ \ \ \ \ \ \ 'Time\ \[s\]',\
-\ \ \ \ \ \ \ \ 'ylabel':\ \ \ \ \ \ \ 'Mass\ \[kg\]',\
-\ \ \ \ \ \ \ \ 'ylabel_short':\ 'm\ \[kg\]:',\
-\ \ \ \ \ \ \ \ 'title':\ \ \ \ \ \ \ \ 'Mass\ vs\ Time',\
-\ \ \ \ \ \ \ \ 'time_based':\ \ \ True,\
-\ \ \ \ \},\
-\ \ \ \ \{\
-\ \ \ \ \ \ \ \ 't_arrays':\ \ \ \ \ \[results\[i\]\[0\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'x_arrays':\ \ \ \ \ \[results\[i\]\[0\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'y_arrays':\ \ \ \ \ \[results\[i\]\[5\]\ for\ i\ in\ range\(3\)\],\
-\ \ \ \ \ \ \ \ 'xlabel':\ \ \ \ \ \ \ 'Time\ \[s\]',\
-\ \ \ \ \ \ \ \ 'ylabel':\ \ \ \ \ \ \ 'Acceleration\ \[m/s2\]',\
-\ \ \ \ \ \ \ \ 'ylabel_short':\ 'a\ \[m/s2\]:',\
-\ \ \ \ \ \ \ \ 'title':\ \ \ \ \ \ \ \ 'Total\ Acceleration\ vs\ Time',\
-\ \ \ \ \ \ \ \ 'time_based':\ \ \ True,\
-\ \ \ \ \},\
-\]\
-\
-plot_comparison\(\
-\ \ \ \ panels,\ LABELS,\ COLORS,\ LINESTYLES,\
-\ \ \ \ suptitle='Task\ 4\.4\ —\ Effect\ of\ Propellant\ Mass\ on\ Trajectory',\
-\ \ \ \ annotation=annotation,\
-\)
+"""
+Task 4.4 — Propellant Mass Variation
+Change propellant mass: 10 kg -> 50 kg -> 90 kg
+"""
+import sys
+import numpy as np
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+from rocket_simulation import (
+    simulate_rocket, compute_metrics, print_metrics,
+    T0, ISP, MP, G0,
+    C_NAVY, C_BLUE, C_LTBLUE,
+)
+from plot_utils import plot_comparison
+
+# three propellant loads; thrust and Isp stay fixed
+PROP_MASSES = [10.0, 50.0, 90.0]
+LABELS      = ['m_prop = 10 kg', 'm_prop = 50 kg', 'm_prop = 90 kg']
+COLORS      = [C_LTBLUE, C_BLUE, C_NAVY]
+LINESTYLES  = ['-', '--', ':']
+
+MDOT = T0 / (G0 * ISP)   # mass flow rate [kg/s] — same for all cases (fixed thrust)
+
+print("=" * 60)
+print("  TASK 4.4 — PROPELLANT MASS VARIATION")
+print("=" * 60)
+print(f"  Fixed thrust  : T   = {T0:.0f} N")
+print(f"  Fixed Isp     : Isp = {ISP:.0f} s")
+print(f"  Mass flow rate: mdot = T/(g0*Isp) = {MDOT:.4f} kg/s  (same for all cases)")
+print(f"  Payload mass  : MP  = {MP:.0f} kg")
+
+results      = []
+metrics_list = []
+for mp_mass in PROP_MASSES:
+    m_initial = MP + mp_mass
+    t_burn    = mp_mass / MDOT
+    a0        = T0 / m_initial - G0   # net initial upward acceleration
+    print(f"\n>>> m_prop = {mp_mass:.0f} kg  (m0 = {m_initial:.0f} kg, "
+          f"t_burn = {t_burn:.2f} s, a0 = {a0:.2f} m/s2)")
+    t, r, v, drag, mass, accel = simulate_rocket(m_propellant=mp_mass)
+    m_obj = compute_metrics(t, r, v)
+    results.append((t, r, v, drag, mass, accel))
+    metrics_list.append(m_obj)
+    print_metrics(m_obj, f"m_prop = {mp_mass:.0f} kg  (m0 = {m_initial:.0f} kg)")
+
+print("\n" + "=" * 60)
+print("  TASK 4.4 — ANSWERS")
+print("=" * 60)
+
+print("\n1. HOW DOES ACCELERATION CHANGE?")
+print("   Net initial acceleration: a0 = T/m0 - g0")
+print("   Smaller propellant mass -> lighter rocket -> higher initial a0.")
+print("   BUT total impulse = T * t_burn is lower -> less delta-v overall.")
+for mp_mass, m_obj in zip(PROP_MASSES, metrics_list):
+    m_initial = MP + mp_mass
+    t_burn    = mp_mass / MDOT
+    a0        = T0 / m_initial - G0
+    print(f"   m_prop = {mp_mass:2.0f} kg  ->  m0 = {m_initial:3.0f} kg  "
+          f"a0 = {a0:6.2f} m/s2  t_burn = {t_burn:.2f} s  "
+          f"z_max = {m_obj['z_max']/1000:.2f} km")
+
+print("\n2. HOW DOES BURNOUT ALTITUDE CHANGE?")
+print("   Burnout altitude = altitude at t = t_burn (when propellant is exhausted).")
+for mp_mass, result in zip(PROP_MASSES, results):
+    t_arr, r_arr = result[0], result[1]
+    t_burn   = mp_mass / MDOT
+    idx_burn = int(np.argmin(np.abs(t_arr - t_burn)))
+    z_burn   = r_arr[idx_burn, 2]
+    print(f"   m_prop = {mp_mass:2.0f} kg  ->  t_burn = {t_burn:.2f} s  "
+          f"z_burn = {z_burn:.1f} m")
+print("   More propellant -> longer burn -> higher burnout altitude,")
+print("   even though initial acceleration is lower (heavier rocket).")
+print("   After burnout the rocket coasts ballistically to apogee.")
+
+# text box shown in the first plot panel
+ann_lines = ["Initial acc. & max altitude:"]
+for mp_mass, m_obj in zip(PROP_MASSES, metrics_list):
+    m_initial = MP + mp_mass
+    a0        = T0 / m_initial - G0
+    ann_lines.append(
+        f"  {mp_mass:.0f}kg: a0={a0:.1f}m/s2  z_max={m_obj['z_max']/1000:.2f}km"
+    )
+annotation = "\n".join(ann_lines)
+
+# four panels: altitude, speed, mass, acceleration
+panels = [
+    {
+        't_arrays':     [results[i][0] for i in range(3)],
+        'x_arrays':     [results[i][0] for i in range(3)],
+        'y_arrays':     [results[i][1][:, 2] for i in range(3)],
+        'xlabel':       'Time [s]',
+        'ylabel':       'Altitude [m]',
+        'ylabel_short': 'z [m]:',
+        'title':        'Altitude vs Time',
+        'time_based':   True,
+    },
+    {
+        't_arrays':     [results[i][0] for i in range(3)],
+        'x_arrays':     [results[i][0] for i in range(3)],
+        'y_arrays':     [np.linalg.norm(results[i][2], axis=1) for i in range(3)],
+        'xlabel':       'Time [s]',
+        'ylabel':       'Speed [m/s]',
+        'ylabel_short': 'v [m/s]:',
+        'title':        'Speed vs Time',
+        'time_based':   True,
+    },
+    {
+        't_arrays':     [results[i][0] for i in range(3)],
+        'x_arrays':     [results[i][0] for i in range(3)],
+        'y_arrays':     [results[i][4] for i in range(3)],
+        'xlabel':       'Time [s]',
+        'ylabel':       'Mass [kg]',
+        'ylabel_short': 'm [kg]:',
+        'title':        'Mass vs Time',
+        'time_based':   True,
+    },
+    {
+        't_arrays':     [results[i][0] for i in range(3)],
+        'x_arrays':     [results[i][0] for i in range(3)],
+        'y_arrays':     [results[i][5] for i in range(3)],
+        'xlabel':       'Time [s]',
+        'ylabel':       'Acceleration [m/s2]',
+        'ylabel_short': 'a [m/s2]:',
+        'title':        'Total Acceleration vs Time',
+        'time_based':   True,
+    },
+]
+
+plot_comparison(
+    panels, LABELS, COLORS, LINESTYLES,
+    suptitle='Task 4.4 — Effect of Propellant Mass on Trajectory',
+    annotation=annotation,
+)
 </script>
 
 <script type="text/x-source" id="src-bonus_multistage">
-"""\
-3\-stage\ rocket\ simulation\ to\ ISS\ orbit,\ ECI\ frame\.\
-Authors:\ Rubén\ Praena,\ Claudia\ Ros,\ Antoni\ Ruiz,\ Miguel\ Sanz,\
-\ \ \ \ \ \ \ \ \ Elishka\ Mrázek,\ Joel\ García,\ Giulia\ Latorre\
-\
-ECI:\ origin\ at\ Earth's\ centre,\ x\ toward\ vernal\ equinox,\ z\ toward\ North\ Pole\.\
-Launch\ from\ equator:\ r0=\(R_EARTH,0,0\),\ v0=\(0,Ω·R_EARTH,0\)\.\
-Integrator:\ explicit\ Euler\ \(dt=0\.1\ s\ in\ atmosphere,\ 5\ s\ in\ vacuum\),\
-\ \ \ \ \ \ \ \ \ \ \ \ leapfrog\ for\ coast/orbital\ phases\ to\ avoid\ energy\ drift\.\
-\
-Known\ simplifications\ vs\.\ a\ real\ mission:\
-\ \ 1\.\ Equatorial\ orbit\ —\ ISS\ is\ at\ 51\.6°;\ a\ real\ launch\ needs\ a\ plane\ change\.\
-\ \ 2\.\ Pre\-programmed\ gravity\ turn,\ no\ active\ guidance\.\
-\ \ 3\.\ Attitude\ changes\ modelled\ as\ thrust\ direction\ changes,\ no\ rigid\-body\ dynamics\.\
-\ \ 4\.\ Rendezvous\ =\ matching\ orbital\ speed\ at\ ISS\ altitude;\ proximity\ ops\ not\ simulated\.\
-\ \ 5\.\ Stage\ 2\ ignites\ immediately\ after\ Stage\ 1\ separation\.\
-\ \ 6\.\ Single\ Cd·A\ value\ for\ all\ phases\.\
-"""\
-\
-import\ sys\
-import\ numpy\ as\ np\
-\
-if\ hasattr\(sys\.stdout,\ 'reconfigure'\):\
-\ \ \ \ sys\.stdout\.reconfigure\(encoding='utf\-8',\ errors='replace'\)\
-if\ hasattr\(sys\.stderr,\ 'reconfigure'\):\
-\ \ \ \ sys\.stderr\.reconfigure\(encoding='utf\-8',\ errors='replace'\)\
-\
-\
-\#\ SECTION\ 1\ —\ PHYSICAL\ CONSTANTS\
-\
-GM\ \ \ \ \ \ \ \ \ \ =\ 3\.99e14\ \ \ \ \ \ \#\ m³/s²\ \ \ gravitational\ parameter\
-R_EARTH\ \ \ \ \ =\ 6\.378e6\ \ \ \ \ \ \#\ m\ \ \ \ \ \ \ mean\ radius\
-G0\ \ \ \ \ \ \ \ \ \ =\ 9\.80665\ \ \ \ \ \ \#\ m/s²\ \ \ \ standard\ gravity\
-OMEGA_EARTH\ =\ 7\.27e\-5\ \ \ \ \ \ \#\ rad/s\ \ \ Earth's\ angular\ velocity\
-\
-\#\ ISA\ atmospheric\ constants\ \(same\ as\ rocket_simulation\.py\)\
-RHO0\ \ \ \ =\ 1\.225\
-T0_ISA\ \ =\ 288\.15\
-L_TROP\ \ =\ 0\.0065\
-R_AIR\ \ \ =\ 287\.05\
-\
-H_DRAG_CUTOFF\ =\ 100e3\ \ \ \ \ \ \#\ m\ \ \ —\ no\ drag\ above\ the\ Kármán\ line\
-H_ISS\ \ \ \ \ \ \ \ \ =\ 408e3\ \ \ \ \ \ \#\ m\ \ \ —\ ISS\ target\ altitude\
-\
-\#\ Gravity\-turn\ pitch\ profile\ \(altitude\ limits\)\
-H_PITCH_START\ =\ 3e3\ \ \ \ \ \ \ \ \#\ m\ \ \ —\ begin\ pitching\ at\ 3\ km\
-H_PITCH_END\ \ \ =\ 80e3\ \ \ \ \ \ \ \#\ m\ \ \ —\ fully\ horizontal\ at\ 80\ km\
-\
-\
-\#\ SECTION\ 2\ —\ ROCKET\ PARAMETERS\
-\#\ Soyuz\-type\ architecture\ scaled\ for\ 500\ kg\ payload\.\
-\#\ Structural\ fraction\ ≈\ 10%\ of\ stage\ propellant\ mass\.\
-\#\ Stage\ 1\ —\ booster,\ kerosene/LOX\ type\
-S1_THRUST\ \ =\ 800e3\ \ \ \ \#\ N\ \ \ \ \ \ \(800\ kN\)\
-S1_ISP\ \ \ \ \ =\ 290\ \ \ \ \ \ \#\ s\
-S1_M_PROP\ \ =\ 40000\ \ \ \ \#\ kg\
-S1_M_STRUCT\ =\ 4000\ \ \ \ \#\ kg\ \ \ \ \ \(tank\ \+\ engine,\ jettisoned\ at\ separation\)\
-\
-\#\ Stage\ 2\ —\ upper\ stage,\ LH2/LOX\ type\
-S2_THRUST\ \ =\ 200e3\ \ \ \ \#\ N\ \ \ \ \ \ \(200\ kN\)\
-S2_ISP\ \ \ \ \ =\ 348\ \ \ \ \ \ \#\ s\
-S2_M_PROP\ \ =\ 8000\ \ \ \ \ \#\ kg\
-S2_M_STRUCT\ =\ 1000\ \ \ \ \#\ kg\
-\
-\#\ Stage\ 3\ —\ maneuvering\ /\ RCS\ \(remains\ attached\ to\ spacecraft\)\
-S3_THRUST\ \ =\ 2e3\ \ \ \ \ \ \#\ N\ \ \ \ \ \ \(2\ kN\)\
-S3_ISP\ \ \ \ \ =\ 300\ \ \ \ \ \ \#\ s\
-S3_M_PROP\ \ =\ 500\ \ \ \ \ \ \#\ kg\
-S3_M_STRUCT\ =\ 200\ \ \ \ \ \#\ kg\ \ \ \ \ \(spacecraft\ bus,\ stays\ with\ payload\)\
-\
-M_PAYLOAD\ \ \ =\ 500\ \ \ \ \ \#\ kg\
-\
-\#\ Aerodynamics\ \(constant\ across\ all\ phases\ —\ simplification\ 6\)\
-CD\ \ \ =\ 0\.30\
-AREF\ =\ 4\.0\ \ \ \ \ \ \ \ \ \ \ \ \#\ m²\ \ \ \(wider\ body\ than\ the\ toy\ rocket\ in\ main\ project\)\
-\
-M_INITIAL\ =\ \(S1_M_PROP\ \+\ S1_M_STRUCT\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \+\ S2_M_PROP\ \+\ S2_M_STRUCT\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \+\ S3_M_PROP\ \+\ S3_M_STRUCT\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \+\ M_PAYLOAD\)\ \ \ \#\ 54\ 200\ kg\ total\
-\
-\
-\#\ SECTION\ 3\ —\ ATMOSPHERIC\ DENSITY\ \(ISA,\ adapted\)\
-\
-def\ density_isa\(z\):\
-\ \ \ \ """ISA\ air\ density\ \[kg/m³\]\ at\ altitude\ z\ \[m\]\.\ Returns\ 0\ above\ 100\ km\."""\
-\ \ \ \ if\ z\ >=\ H_DRAG_CUTOFF:\
-\ \ \ \ \ \ \ \ return\ 0\.0\
-\ \ \ \ z_km\ =\ z\ /\ 1000\.0\
-\ \ \ \ if\ z_km\ <\ 11:\
-\ \ \ \ \ \ \ \ T\ =\ T0_ISA\ \-\ L_TROP\ \*\ z\
-\ \ \ \ \ \ \ \ p\ =\ 101325\.0\ \*\ \(T\ /\ T0_ISA\)\ \*\*\ \(G0\ /\ \(L_TROP\ \*\ R_AIR\)\)\
-\ \ \ \ elif\ z_km\ <\ 20:\
-\ \ \ \ \ \ \ \ T\ =\ 216\.65\
-\ \ \ \ \ \ \ \ p\ =\ 22632\.1\ \*\ np\.exp\(\-G0\ \*\ \(z\ \-\ 11000\)\ /\ \(R_AIR\ \*\ T\)\)\
-\ \ \ \ elif\ z_km\ <\ 32:\
-\ \ \ \ \ \ \ \ T\ \ \ \ \ =\ 216\.65\ \+\ 0\.001\ \*\ \(z\ \-\ 20000\)\
-\ \ \ \ \ \ \ \ T_avg\ =\ \(216\.65\ \+\ T\)\ /\ 2\.0\
-\ \ \ \ \ \ \ \ p\ \ \ \ \ =\ 5474\.89\ \*\ np\.exp\(\-G0\ \*\ \(z\ \-\ 20000\)\ /\ \(R_AIR\ \*\ T_avg\)\)\
-\ \ \ \ elif\ z_km\ <\ 47:\
-\ \ \ \ \ \ \ \ T\ \ \ \ \ =\ 228\.65\ \+\ 0\.0028\ \*\ \(z\ \-\ 32000\)\
-\ \ \ \ \ \ \ \ T_avg\ =\ \(228\.65\ \+\ T\)\ /\ 2\.0\
-\ \ \ \ \ \ \ \ p\ \ \ \ \ =\ 868\.02\ \*\ np\.exp\(\-G0\ \*\ \(z\ \-\ 32000\)\ /\ \(R_AIR\ \*\ T_avg\)\)\
-\ \ \ \ elif\ z_km\ <\ 51:\
-\ \ \ \ \ \ \ \ T\ =\ 270\.65\
-\ \ \ \ \ \ \ \ p\ =\ 110\.91\ \*\ np\.exp\(\-G0\ \*\ \(z\ \-\ 47000\)\ /\ \(R_AIR\ \*\ T\)\)\
-\ \ \ \ elif\ z_km\ <\ 71:\
-\ \ \ \ \ \ \ \ T\ \ \ \ \ =\ 270\.65\ \+\ 0\.0028\ \*\ \(z\ \-\ 51000\)\
-\ \ \ \ \ \ \ \ T_avg\ =\ \(270\.65\ \+\ T\)\ /\ 2\.0\
-\ \ \ \ \ \ \ \ p\ \ \ \ \ =\ 66\.939\ \*\ np\.exp\(\-G0\ \*\ \(z\ \-\ 51000\)\ /\ \(R_AIR\ \*\ T_avg\)\)\
-\ \ \ \ elif\ z_km\ <\ 85:\
-\ \ \ \ \ \ \ \ T\ \ \ \ \ =\ 270\.65\ \+\ 0\.002\ \*\ \(z\ \-\ 71000\)\
-\ \ \ \ \ \ \ \ T_avg\ =\ \(270\.65\ \+\ T\)\ /\ 2\.0\
-\ \ \ \ \ \ \ \ p\ \ \ \ \ =\ 3\.9564\ \*\ np\.exp\(\-G0\ \*\ \(z\ \-\ 71000\)\ /\ \(R_AIR\ \*\ T_avg\)\)\
-\ \ \ \ else:\
-\ \ \ \ \ \ \ \ return\ max\(1\.5e\-5\ \*\ np\.exp\(\-\(z\ \-\ 85000\)\ /\ 6000\.0\),\ 0\.0\)\
-\ \ \ \ return\ max\(p\ /\ \(R_AIR\ \*\ T\),\ 0\.0\)\
-\
-\
-\#\ SECTION\ 4\ —\ GEOMETRY\ HELPERS\
-\
-def\ prograde_hat\(r\):\
-\ \ \ \ """\
-\ \ \ \ Unit\ prograde\ vector\ in\ the\ orbital\ plane\ \(perpendicular\ to\ r,\ eastward\)\.\
-\ \ \ \ For\ an\ equatorial\ launch\ from\ \+x\ axis:\ p_hat\ =\ ẑ\ ×\ r_hat\.\
-\ \ \ \ Works\ as\ long\ as\ the\ trajectory\ stays\ near\ the\ equatorial\ plane\.\
-\ \ \ \ """\
-\ \ \ \ z_pole\ =\ np\.array\(\[0\.0,\ 0\.0,\ 1\.0\]\)\
-\ \ \ \ p\ =\ np\.cross\(z_pole,\ r\)\
-\ \ \ \ norm\ =\ np\.linalg\.norm\(p\)\
-\ \ \ \ if\ norm\ <\ 1e\-10:\
-\ \ \ \ \ \ \ \ return\ np\.array\(\[0\.0,\ 1\.0,\ 0\.0\]\)\
-\ \ \ \ return\ p\ /\ norm\
-\
-\
-def\ pitch_angle\(h\):\
-\ \ \ \ """\
-\ \ \ \ Pre\-programmed\ gravity\ turn:\ pitch\ angle\ α\ from\ radial\ \(vertical\)\.\
-\ \ \ \ \ \ h\ <\ H_PITCH_START\ \ →\ α\ =\ 0\ \ \ \ \ \(pure\ vertical\)\
-\ \ \ \ \ \ H_PITCH_START\ ≤\ h\ ≤\ H_PITCH_END\ →\ α\ linearly\ from\ 0\ to\ π/2\
-\ \ \ \ \ \ h\ >\ H_PITCH_END\ \ \ \ →\ α\ =\ π/2\ \ \ \(pure\ horizontal\ /\ prograde\)\
-\ \ \ \ """\
-\ \ \ \ if\ h\ <=\ H_PITCH_START:\
-\ \ \ \ \ \ \ \ return\ 0\.0\
-\ \ \ \ if\ h\ >=\ H_PITCH_END:\
-\ \ \ \ \ \ \ \ return\ np\.pi\ /\ 2\.0\
-\ \ \ \ frac\ =\ \(h\ \-\ H_PITCH_START\)\ /\ \(H_PITCH_END\ \-\ H_PITCH_START\)\
-\ \ \ \ return\ frac\ \*\ np\.pi\ /\ 2\.0\
-\
-\
-def\ thrust_hat\(r,\ h,\ mode='gravity_turn'\):\
-\ \ \ \ """\
-\ \ \ \ Thrust\ direction\ unit\ vector\ in\ ECI\ frame\.\
-\
-\ \ \ \ mode\ =\ 'gravity_turn'\ \ :\ pitch\ angle\ from\ vertical\ based\ on\ altitude\
-\ \ \ \ mode\ =\ 'prograde'\ \ \ \ \ \ :\ purely\ prograde\ \(for\ circularisation\)\
-\ \ \ \ mode\ =\ 'radial'\ \ \ \ \ \ \ \ :\ purely\ radial/vertical\ \(Stage\ 1\ initial\)\
-\ \ \ \ """\
-\ \ \ \ r_hat\ =\ r\ /\ np\.linalg\.norm\(r\)\
-\ \ \ \ t_hat\ =\ prograde_hat\(r\)\
-\
-\ \ \ \ if\ mode\ ==\ 'radial':\
-\ \ \ \ \ \ \ \ return\ r_hat\
-\ \ \ \ elif\ mode\ ==\ 'prograde':\
-\ \ \ \ \ \ \ \ return\ t_hat\
-\ \ \ \ else:\ \ \#\ gravity_turn\
-\ \ \ \ \ \ \ \ alpha\ =\ pitch_angle\(h\)\
-\ \ \ \ \ \ \ \ return\ np\.cos\(alpha\)\ \*\ r_hat\ \+\ np\.sin\(alpha\)\ \*\ t_hat\
-\
-\
-def\ orbital_elements\(r,\ v\):\
-\ \ \ \ """\
-\ \ \ \ Returns\ \(altitude_km,\ speed_ms,\ ecc,\ sma_km\)\ for\ the\ current\ state\.\
-\ \ \ \ sma\ =\ semi\-major\ axis\.\
-\ \ \ \ """\
-\ \ \ \ r_norm\ =\ np\.linalg\.norm\(r\)\
-\ \ \ \ v_norm\ =\ np\.linalg\.norm\(v\)\
-\ \ \ \ h_km\ \ \ =\ \(r_norm\ \-\ R_EARTH\)\ /\ 1e3\
-\
-\ \ \ \ eps\ =\ v_norm\*\*2\ /\ 2\ \-\ GM\ /\ r_norm\
-\ \ \ \ sma\ =\ \-GM\ /\ \(2\ \*\ eps\)\ if\ abs\(eps\)\ >\ 1\ else\ float\('inf'\)\
-\
-\ \ \ \ e_vec\ =\ \(v_norm\*\*2\ /\ GM\ \-\ 1\ /\ r_norm\)\ \*\ r\ \-\ np\.dot\(r,\ v\)\ /\ GM\ \*\ v\
-\ \ \ \ ecc\ \ \ =\ np\.linalg\.norm\(e_vec\)\
-\
-\ \ \ \ return\ h_km,\ v_norm,\ ecc,\ sma\ /\ 1e3\
-\
-\
-def\ _orbit_apogee_perigee\(r,\ v\):\
-\ \ \ \ """\
-\ \ \ \ Returns\ \(apogee_altitude_m,\ perigee_altitude_m\)\ of\ the\ Keplerian\ orbit\.\
-\ \ \ \ Returns\ \(inf,\ \-inf\)\ for\ escape\ trajectories\.\
-\ \ \ \ """\
-\ \ \ \ r_norm\ =\ np\.linalg\.norm\(r\)\
-\ \ \ \ v_norm\ =\ np\.linalg\.norm\(v\)\
-\ \ \ \ eps\ \ \ \ =\ v_norm\*\*2\ /\ 2\ \-\ GM\ /\ r_norm\
-\ \ \ \ if\ eps\ >=\ 0:\
-\ \ \ \ \ \ \ \ return\ float\('inf'\),\ float\('\-inf'\)\
-\ \ \ \ sma\ \ \ =\ \-GM\ /\ \(2\ \*\ eps\)\
-\ \ \ \ h_vec\ =\ np\.cross\(r,\ v\)\
-\ \ \ \ h_mag\ =\ np\.linalg\.norm\(h_vec\)\
-\ \ \ \ ecc\ \ \ =\ np\.sqrt\(max\(1\ \+\ 2\ \*\ eps\ \*\ h_mag\*\*2\ /\ GM\*\*2,\ 0\.0\)\)\
-\ \ \ \ return\ sma\ \*\ \(1\ \+\ ecc\)\ \-\ R_EARTH,\ sma\ \*\ \(1\ \-\ ecc\)\ \-\ R_EARTH\
-\
-\
-def\ apogee_altitude\(r,\ v\):\
-\ \ \ \ """Predicted\ apogee\ altitude\ \[m\]\.\ Returns\ inf\ for\ escape\ trajectory\."""\
-\ \ \ \ return\ _orbit_apogee_perigee\(r,\ v\)\[0\]\
-\
-\
-\#\ SECTION\ 5\ —\ SIMULATION\
-\
-\#\ Phase\ labels\ \(used\ in\ output\ arrays\)\
-PHASE_S1\ \ \ =\ 1\ \ \ \#\ Stage\ 1\ burning\
-PHASE_S2\ \ \ =\ 2\ \ \ \#\ Stage\ 2\ burning\
-PHASE_COAS\ =\ 3\ \ \ \#\ Coast\ \(suborbital\)\ to\ first\ apogee\
-PHASE_S3C\ \ =\ 4\ \ \ \#\ Stage\ 3\ circularisation\ at\ parking\ orbit\
-PHASE_HOH\ \ =\ 5\ \ \ \#\ Hohmann\ coast\ from\ parking\ orbit\ to\ ISS\ altitude\
-PHASE_ORB\ \ =\ 6\ \ \ \#\ ISS\ circular\ orbit\ \+\ rendezvous\
-\
-PHASE_NAMES\ =\ \{\
-\ \ \ \ PHASE_S1:\ \ \ 'Stage\ 1\ burn',\
-\ \ \ \ PHASE_S2:\ \ \ 'Stage\ 2\ burn',\
-\ \ \ \ PHASE_COAS:\ 'Coast',\
-\ \ \ \ PHASE_S3C:\ \ 'Circularisation',\
-\ \ \ \ PHASE_HOH:\ \ 'Hohmann\ transfer',\
-\ \ \ \ PHASE_ORB:\ \ 'ISS\ orbit\ /\ Rendezvous',\
-\}\
-\
-\
-def\ simulate_multistage\(dt_atm=0\.1,\ dt_space=5\.0\):\
-\ \ \ \ """\
-\ \ \ \ Simulate\ the\ full\ 3\-stage\ mission\ to\ ISS\ using\ explicit\ Euler\ integration\.\
-\
-\ \ \ \ Two\ time\ steps\ are\ used:\
-\ \ \ \ \ \ dt_atm\ \ \ —\ inside\ atmosphere\ \(h\ <\ 100\ km\),\ default\ 0\.1\ s\
-\ \ \ \ \ \ dt_space\ —\ in\ vacuum\ /\ orbit,\ default\ 5\.0\ s\
-\
-\ \ \ \ Returns\
-\ \ \ \ \-\-\-\-\-\-\-\
-\ \ \ \ dict\ with\ keys:\
-\ \ \ \ \ \ 't'\ \ \ \ \ \ :\ \(N,\)\ \ \ time\ \[s\]\
-\ \ \ \ \ \ 'r'\ \ \ \ \ \ :\ \(N,3\)\ \ ECI\ position\ \[m\]\
-\ \ \ \ \ \ 'v'\ \ \ \ \ \ :\ \(N,3\)\ \ ECI\ velocity\ \[m/s\]\
-\ \ \ \ \ \ 'm'\ \ \ \ \ \ :\ \(N,\)\ \ \ total\ mass\ \[kg\]\
-\ \ \ \ \ \ 'phase'\ \ :\ \(N,\)\ \ \ int\ phase\ label\ \(see\ PHASE_\*\ constants\)\
-\ \ \ \ \ \ 'events'\ :\ list\ of\ \(t,\ label\)\ tuples\ at\ key\ mission\ events\
-\ \ \ \ \ \ 'h'\ \ \ \ \ \ :\ \(N,\)\ \ \ altitude\ \[km\]\
-\ \ \ \ \ \ 'speed'\ \ :\ \(N,\)\ \ \ speed\ \[m/s\]\
-\ \ \ \ """\
-\ \ \ \ \#\ initial\ state\
-\ \ \ \ r\ =\ np\.array\(\[R_EARTH,\ 0\.0,\ 0\.0\],\ dtype=float\)\
-\ \ \ \ v\ =\ np\.array\(\[0\.0,\ OMEGA_EARTH\ \*\ R_EARTH,\ 0\.0\],\ dtype=float\)\
-\ \ \ \ m\ =\ float\(M_INITIAL\)\
-\
-\ \ \ \ prop1\ =\ float\(S1_M_PROP\)\
-\ \ \ \ prop2\ =\ float\(S2_M_PROP\)\
-\ \ \ \ prop3\ =\ float\(S3_M_PROP\)\
-\
-\ \ \ \ phase\ =\ PHASE_S1\
-\ \ \ \ t\ \ \ \ \ =\ 0\.0\
-\
-\ \ \ \ t_list\ \ \ \ \ =\ \[\]\
-\ \ \ \ r_list\ \ \ \ \ =\ \[\]\
-\ \ \ \ v_list\ \ \ \ \ =\ \[\]\
-\ \ \ \ m_list\ \ \ \ \ =\ \[\]\
-\ \ \ \ phase_list\ =\ \[\]\
-\ \ \ \ events\ \ \ \ \ =\ \[\]\
-\
-\ \ \ \ t_circ_done\ =\ None\
-\ \ \ \ T_MAX\ =\ 25000\.0\ \ \#\ s\ —\ well\ beyond\ 2\ orbital\ periods\
-\
-\ \ \ \ \#\ main\ integration\ loop\
-\ \ \ \ while\ t\ <\ T_MAX:\
-\
-\ \ \ \ \ \ \ \ r_norm\ =\ np\.linalg\.norm\(r\)\
-\ \ \ \ \ \ \ \ h\ \ \ \ \ \ =\ r_norm\ \-\ R_EARTH\
-\ \ \ \ \ \ \ \ r_hat\ \ =\ r\ /\ r_norm\
-\
-\ \ \ \ \ \ \ \ t_list\.append\(t\)\
-\ \ \ \ \ \ \ \ r_list\.append\(r\.copy\(\)\)\
-\ \ \ \ \ \ \ \ v_list\.append\(v\.copy\(\)\)\
-\ \ \ \ \ \ \ \ m_list\.append\(m\)\
-\ \ \ \ \ \ \ \ phase_list\.append\(phase\)\
-\
-\ \ \ \ \ \ \ \ \#\ time\ step\
-\ \ \ \ \ \ \ \ if\ h\ <\ H_DRAG_CUTOFF:\
-\ \ \ \ \ \ \ \ \ \ \ \ dt\ =\ dt_atm\
-\ \ \ \ \ \ \ \ elif\ phase\ in\ \(PHASE_HOH,\ PHASE_ORB\):\
-\ \ \ \ \ \ \ \ \ \ \ \ dt\ =\ 1\.0\
-\ \ \ \ \ \ \ \ else:\
-\ \ \ \ \ \ \ \ \ \ \ \ dt\ =\ dt_space\
-\
-\ \ \ \ \ \ \ \ \#\ atmospheric\ drag\ \(v_rel\ =\ velocity\ relative\ to\ co\-rotating\ atmosphere\)\
-\ \ \ \ \ \ \ \ if\ h\ <\ H_DRAG_CUTOFF:\
-\ \ \ \ \ \ \ \ \ \ \ \ rho\ \ \ =\ density_isa\(h\)\
-\ \ \ \ \ \ \ \ \ \ \ \ v_atm\ =\ np\.array\(\[\-OMEGA_EARTH\ \*\ r\[1\],\ OMEGA_EARTH\ \*\ r\[0\],\ 0\.0\]\)\
-\ \ \ \ \ \ \ \ \ \ \ \ v_rel\ =\ v\ \-\ v_atm\
-\ \ \ \ \ \ \ \ \ \ \ \ vr\ \ \ \ =\ np\.linalg\.norm\(v_rel\)\
-\ \ \ \ \ \ \ \ \ \ \ \ a_drag\ =\ \-0\.5\ \*\ CD\ \*\ AREF\ \*\ rho\ \*\ vr\ /\ m\ \*\ v_rel\
-\ \ \ \ \ \ \ \ else:\
-\ \ \ \ \ \ \ \ \ \ \ \ a_drag\ =\ np\.zeros\(3\)\
-\
-\ \ \ \ \ \ \ \ \#\ thrust\
-\ \ \ \ \ \ \ \ a_thrust\ =\ np\.zeros\(3\)\
-\
-\ \ \ \ \ \ \ \ if\ phase\ ==\ PHASE_S1\ and\ prop1\ >\ 0:\
-\ \ \ \ \ \ \ \ \ \ \ \ T_cur\ \ \ =\ S1_THRUST\
-\ \ \ \ \ \ \ \ \ \ \ \ mdot\ \ \ \ =\ T_cur\ /\ \(S1_ISP\ \*\ G0\)\
-\ \ \ \ \ \ \ \ \ \ \ \ dm\ \ \ \ \ \ =\ mdot\ \*\ dt\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ dm\ >\ prop1:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ dm\ =\ prop1\
-\ \ \ \ \ \ \ \ \ \ \ \ t_hat_v\ \ =\ thrust_hat\(r,\ h,\ mode='gravity_turn'\)\
-\ \ \ \ \ \ \ \ \ \ \ \ a_thrust\ =\ \(T_cur\ /\ m\)\ \*\ t_hat_v\
-\ \ \ \ \ \ \ \ \ \ \ \ prop1\ \ \ \-=\ dm\
-\ \ \ \ \ \ \ \ \ \ \ \ m\ \ \ \ \ \ \ \-=\ dm\
-\
-\ \ \ \ \ \ \ \ elif\ phase\ ==\ PHASE_S2\ and\ prop2\ >\ 0:\
-\ \ \ \ \ \ \ \ \ \ \ \ T_cur\ \ \ =\ S2_THRUST\
-\ \ \ \ \ \ \ \ \ \ \ \ mdot\ \ \ \ =\ T_cur\ /\ \(S2_ISP\ \*\ G0\)\
-\ \ \ \ \ \ \ \ \ \ \ \ dm\ \ \ \ \ \ =\ min\(mdot\ \*\ dt,\ prop2\)\
-\ \ \ \ \ \ \ \ \ \ \ \ t_hat_v\ \ =\ thrust_hat\(r,\ h,\ mode='gravity_turn'\)\
-\ \ \ \ \ \ \ \ \ \ \ \ a_thrust\ =\ \(T_cur\ /\ m\)\ \*\ t_hat_v\
-\ \ \ \ \ \ \ \ \ \ \ \ prop2\ \ \ \-=\ dm\
-\ \ \ \ \ \ \ \ \ \ \ \ m\ \ \ \ \ \ \ \-=\ dm\
-\
-\ \ \ \ \ \ \ \ elif\ phase\ ==\ PHASE_S3C\ and\ prop3\ >\ 0:\
-\ \ \ \ \ \ \ \ \ \ \ \ v_radial_now\ =\ np\.dot\(v,\ r_hat\)\
-\ \ \ \ \ \ \ \ \ \ \ \ v_tang_now\ \ \ =\ np\.sqrt\(max\(np\.linalg\.norm\(v\)\*\*2\ \-\ v_radial_now\*\*2,\ 0\.0\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ v_circ_now\ \ \ =\ np\.sqrt\(GM\ /\ r_norm\)\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ v_tang_now\ >=\ v_circ_now:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ pass\
-\ \ \ \ \ \ \ \ \ \ \ \ else:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ T_cur\ \ \ =\ S3_THRUST\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ mdot\ \ \ \ =\ T_cur\ /\ \(S3_ISP\ \*\ G0\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ dm\ \ \ \ \ \ =\ min\(mdot\ \*\ dt,\ prop3\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ t_hat_v\ \ =\ thrust_hat\(r,\ h,\ mode='prograde'\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ a_thrust\ =\ \(T_cur\ /\ m\)\ \*\ t_hat_v\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ prop3\ \ \ \-=\ dm\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ m\ \ \ \ \ \ \ \-=\ dm\
-\
-\ \ \ \ \ \ \ \ \#\ coast/orbit\ phases:\ leapfrog\ \(symplectic,\ avoids\ Euler\ energy\ drift\)\
-\ \ \ \ \ \ \ \ if\ phase\ in\ \(PHASE_COAS,\ PHASE_HOH,\ PHASE_ORB\)\ and\ np\.all\(a_drag\ ==\ 0\)\ and\ np\.all\(a_thrust\ ==\ 0\):\
-\ \ \ \ \ \ \ \ \ \ \ \ \#\ kick\-drift\-kick\ leapfrog\
-\ \ \ \ \ \ \ \ \ \ \ \ a_r\ \ \ \ =\ \-\(GM\ /\ r_norm\*\*2\)\ \*\ r_hat\
-\ \ \ \ \ \ \ \ \ \ \ \ v_half\ =\ v\ \+\ a_r\ \*\ \(dt\ /\ 2\)\
-\ \ \ \ \ \ \ \ \ \ \ \ r\ \ \ \ \ \ =\ r\ \+\ v_half\ \*\ dt\
-\ \ \ \ \ \ \ \ \ \ \ \ r2\ \ \ \ \ =\ np\.linalg\.norm\(r\)\
-\ \ \ \ \ \ \ \ \ \ \ \ a_r2\ \ \ =\ \-\(GM\ /\ r2\*\*2\)\ \*\ \(r\ /\ r2\)\
-\ \ \ \ \ \ \ \ \ \ \ \ v\ \ \ \ \ \ =\ v_half\ \+\ a_r2\ \*\ \(dt\ /\ 2\)\
-\ \ \ \ \ \ \ \ else:\
-\ \ \ \ \ \ \ \ \ \ \ \ a_grav\ \ =\ \-\(GM\ /\ r_norm\*\*2\)\ \*\ r_hat\
-\ \ \ \ \ \ \ \ \ \ \ \ a_total\ =\ a_grav\ \+\ a_drag\ \+\ a_thrust\
-\ \ \ \ \ \ \ \ \ \ \ \ r\ =\ r\ \+\ v\ \*\ dt\
-\ \ \ \ \ \ \ \ \ \ \ \ v\ =\ v\ \+\ a_total\ \*\ dt\
-\ \ \ \ \ \ \ \ t\ =\ t\ \+\ dt\
-\
-\ \ \ \ \ \ \ \ \#\ phase\ transitions\
-\
-\ \ \ \ \ \ \ \ if\ phase\ ==\ PHASE_S1:\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ prop1\ <=\ 0:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ phase\ =\ PHASE_S2\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ m\ \ \ \ \-=\ S1_M_STRUCT\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ events\.append\(\(t,\ 'Stage\ 1\ separation'\)\)\
-\
-\ \ \ \ \ \ \ \ elif\ phase\ ==\ PHASE_S2:\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ prop2\ <=\ 0:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ phase\ =\ PHASE_COAS\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ m\ \ \ \ \-=\ S2_M_STRUCT\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ h_sep\ =\ \(np\.linalg\.norm\(r\)\ \-\ R_EARTH\)\ /\ 1e3\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ events\.append\(\(t,\ f'Stage\ 2\ burnout\ \+\ separation\ at\ \{h_sep:\.1f\}\ km\ —\ coasting\ to\ apogee'\)\)\
-\
-\ \ \ \ \ \ \ \ elif\ phase\ ==\ PHASE_COAS:\
-\ \ \ \ \ \ \ \ \ \ \ \ v_radial\ =\ np\.dot\(v,\ r\ /\ np\.linalg\.norm\(r\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ v_radial\ <\ 0\ and\ t\ >\ 50:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ phase\ =\ PHASE_S3C\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ events\.append\(\(t,\ f'Apogee\ at\ \{\(np\.linalg\.norm\(r\)\-R_EARTH\)/1e3:\.1f\}\ km\ —\ Stage\ 3\ ignition'\)\)\
-\
-\ \ \ \ \ \ \ \ elif\ phase\ ==\ PHASE_S3C:\
-\ \ \ \ \ \ \ \ \ \ \ \ v_radial_now\ =\ np\.dot\(v,\ r_hat\)\
-\ \ \ \ \ \ \ \ \ \ \ \ v_tang_now\ \ \ =\ np\.sqrt\(max\(np\.linalg\.norm\(v\)\*\*2\ \-\ v_radial_now\*\*2,\ 0\.0\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ v_circ_now\ \ \ =\ np\.sqrt\(GM\ /\ r_norm\)\
-\ \ \ \ \ \ \ \ \ \ \ \ h_circ\ \ \ \ \ \ \ =\ \(r_norm\ \-\ R_EARTH\)\ /\ 1e3\
-\ \ \ \ \ \ \ \ \ \ \ \ _,\ _,\ ecc_now,\ _\ =\ orbital_elements\(r,\ v\)\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ v_tang_now\ >=\ v_circ_now:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ r_park\ \ =\ r_norm\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ r_iss\ \ \ =\ R_EARTH\ \+\ H_ISS\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ sma_hoh\ =\ \(r_park\ \+\ r_iss\)\ /\ 2\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ v_hoh1\ \ =\ np\.sqrt\(GM\ \*\ \(2\ /\ r_park\ \-\ 1\ /\ sma_hoh\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ dv_hoh1\ =\ v_hoh1\ \-\ v_circ_now\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ t_hat_now\ =\ prograde_hat\(r\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ v\ \ \ \ \+=\ dv_hoh1\ \*\ t_hat_now\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ dm_hoh1\ =\ m\ \*\ \(1\ \-\ np\.exp\(\-abs\(dv_hoh1\)\ /\ \(S3_ISP\ \*\ G0\)\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ m\ \ \ \ \-=\ dm_hoh1\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ prop3\ =\ max\(prop3\ \-\ dm_hoh1,\ 0\.0\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ phase\ =\ PHASE_HOH\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ events\.append\(\(t,\ f'Parking\ orbit\ \{h_circ:\.0f\}\ km\ —\ Hohmann\ burn\ 1\ \(\{dv_hoh1:\.1f\}\ m/s\)'\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ elif\ prop3\ <=\ 0:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ phase\ \ \ \ \ \ \ =\ PHASE_ORB\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ t_circ_done\ =\ t\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ events\.append\(\(t,\ f'Stage\ 3\ propellant\ depleted\ —\ ecc=\{ecc_now:\.4f\},\ h=\{h_circ:\.1f\}\ km'\)\)\
-\
-\ \ \ \ \ \ \ \ elif\ phase\ ==\ PHASE_HOH:\
-\ \ \ \ \ \ \ \ \ \ \ \ v_radial_hoh\ =\ np\.dot\(v,\ r_hat\)\
-\ \ \ \ \ \ \ \ \ \ \ \ h_now\ =\ \(r_norm\ \-\ R_EARTH\)\ /\ 1e3\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ v_radial_hoh\ <\ 0\ and\ h_now\ >\ H_ISS\ /\ 1e3\ \*\ 0\.95:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ v_circ_iss\ \ =\ np\.sqrt\(GM\ /\ r_norm\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ v_tang_hoh\ \ =\ np\.sqrt\(max\(np\.linalg\.norm\(v\)\*\*2\ \-\ v_radial_hoh\*\*2,\ 0\.0\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ dv_hoh2\ \ \ \ \ =\ v_circ_iss\ \-\ v_tang_hoh\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ if\ dv_hoh2\ >\ 0\ and\ prop3\ >\ 0:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ t_hat_now\ =\ prograde_hat\(r\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ v\ \ \ \ \+=\ dv_hoh2\ \*\ t_hat_now\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ dm_hoh2\ =\ m\ \*\ \(1\ \-\ np\.exp\(\-abs\(dv_hoh2\)\ /\ \(S3_ISP\ \*\ G0\)\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ m\ \ \ \ \-=\ dm_hoh2\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ prop3\ =\ max\(prop3\ \-\ dm_hoh2,\ 0\.0\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ _,\ _,\ ecc_iss,\ _\ =\ orbital_elements\(r,\ v\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ h_iss_now\ =\ \(np\.linalg\.norm\(r\)\ \-\ R_EARTH\)\ /\ 1e3\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ events\.append\(\(t,\ f'ISS\ orbit\ \{h_iss_now:\.0f\}\ km\ —\ Hohmann\ burn\ 2\ \(\{dv_hoh2:\.1f\}\ m/s\),\ ecc=\{ecc_iss:\.4f\}'\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ events\.append\(\(t,\ 'Attitude\ manoeuvres\ \(pitch/yaw/roll\)\ —\ ISS\ docking\ approach'\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ phase\ \ \ \ \ \ \ =\ PHASE_ORB\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ t_circ_done\ =\ t\
-\
-\ \ \ \ \ \ \ \ elif\ phase\ ==\ PHASE_ORB:\
-\ \ \ \ \ \ \ \ \ \ \ \ T_actual\ =\ 2\ \*\ np\.pi\ \*\ np\.sqrt\(r_norm\*\*3\ /\ GM\)\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ t_circ_done\ is\ not\ None\ and\ t\ \-\ t_circ_done\ >\ T_actual:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ events\.append\(\(t,\ 'ISS\ docking\ complete\ —\ mission\ success'\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ t_list\.append\(t\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ r_list\.append\(r\.copy\(\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ v_list\.append\(v\.copy\(\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ m_list\.append\(m\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ phase_list\.append\(phase\)\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ break\
-\
-\ \ \ \ \ \ \ \ if\ np\.linalg\.norm\(r\)\ <\ R_EARTH\ \-\ 1000:\
-\ \ \ \ \ \ \ \ \ \ \ \ events\.append\(\(t,\ 'CRASH\ —\ rocket\ fell\ back\ to\ Earth'\)\)\
-\ \ \ \ \ \ \ \ \ \ \ \ break\
-\
-\ \ \ \ \#\ pack\ results\
-\ \ \ \ t_arr\ \ \ \ \ =\ np\.array\(t_list\)\
-\ \ \ \ r_arr\ \ \ \ \ =\ np\.array\(r_list\)\
-\ \ \ \ v_arr\ \ \ \ \ =\ np\.array\(v_list\)\
-\ \ \ \ m_arr\ \ \ \ \ =\ np\.array\(m_list\)\
-\ \ \ \ phase_arr\ =\ np\.array\(phase_list,\ dtype=int\)\
-\
-\ \ \ \ h_arr\ \ \ \ \ =\ \(np\.linalg\.norm\(r_arr,\ axis=1\)\ \-\ R_EARTH\)\ /\ 1e3\
-\ \ \ \ speed_arr\ =\ np\.linalg\.norm\(v_arr,\ axis=1\)\
-\
-\ \ \ \ return\ \{\
-\ \ \ \ \ \ \ \ 't':\ \ \ \ \ \ t_arr,\
-\ \ \ \ \ \ \ \ 'r':\ \ \ \ \ \ r_arr,\
-\ \ \ \ \ \ \ \ 'v':\ \ \ \ \ \ v_arr,\
-\ \ \ \ \ \ \ \ 'm':\ \ \ \ \ \ m_arr,\
-\ \ \ \ \ \ \ \ 'phase':\ \ phase_arr,\
-\ \ \ \ \ \ \ \ 'events':\ events,\
-\ \ \ \ \ \ \ \ 'h':\ \ \ \ \ \ h_arr,\
-\ \ \ \ \ \ \ \ 'speed':\ \ speed_arr,\
-\ \ \ \ \}\
-\
-\
-\#\ SECTION\ 6\ —\ METRICS\
-\
-def\ print_mission_summary\(data\):\
-\ \ \ \ """Print\ a\ formatted\ summary\ of\ key\ mission\ milestones\."""\
-\ \ \ \ t\ \ \ \ \ =\ data\['t'\]\
-\ \ \ \ h\ \ \ \ \ =\ data\['h'\]\
-\ \ \ \ speed\ =\ data\['speed'\]\
-\ \ \ \ m\ \ \ \ \ =\ data\['m'\]\
-\ \ \ \ phase\ =\ data\['phase'\]\
-\
-\ \ \ \ print\('='\ \*\ 62\)\
-\ \ \ \ print\('\ \ 3\-STAGE\ ROCKET\ MISSION\ SUMMARY'\)\
-\ \ \ \ print\('='\ \*\ 62\)\
-\ \ \ \ print\(f'\ \ Initial\ mass\ \ \ \ \ \ :\ \{M_INITIAL/1e3:\.2f\}\ t'\)\
-\ \ \ \ print\(f'\ \ Payload\ \ \ \ \ \ \ \ \ \ \ :\ \{M_PAYLOAD:\.0f\}\ kg'\)\
-\ \ \ \ print\(\)\
-\
-\ \ \ \ for\ ev_t,\ ev_label\ in\ data\['events'\]:\
-\ \ \ \ \ \ \ \ print\(f'\ \ t\ =\ \{ev_t:7\.1f\}\ s\ \ \|\ \ \{ev_label\}'\)\
-\ \ \ \ print\(\)\
-\
-\ \ \ \ print\(f'\ \ Max\ altitude\ \ \ \ \ \ :\ \{h\.max\(\):\.2f\}\ km'\)\
-\ \ \ \ print\(f'\ \ Max\ speed\ \ \ \ \ \ \ \ \ :\ \{speed\.max\(\):\.1f\}\ m/s'\)\
-\ \ \ \ print\(\)\
-\
-\ \ \ \ mask_orb\ =\ phase\ ==\ PHASE_ORB\
-\ \ \ \ if\ mask_orb\.any\(\):\
-\ \ \ \ \ \ \ \ r_orb\ \ \ =\ data\['r'\]\[mask_orb\]\
-\ \ \ \ \ \ \ \ v_orb\ \ \ =\ data\['v'\]\[mask_orb\]\
-\ \ \ \ \ \ \ \ idx_mid\ =\ len\(r_orb\)\ //\ 2\
-\ \ \ \ \ \ \ \ h_o,\ v_o,\ ecc,\ sma\ =\ orbital_elements\(r_orb\[idx_mid\],\ v_orb\[idx_mid\]\)\
-\ \ \ \ \ \ \ \ print\(f'\ \ Final\ orbit\ altitude\ :\ \{h_o:\.1f\}\ km'\)\
-\ \ \ \ \ \ \ \ print\(f'\ \ Orbital\ speed\ \ \ \ \ \ \ \ :\ \{v_o:\.1f\}\ m/s'\)\
-\ \ \ \ \ \ \ \ print\(f'\ \ Eccentricity\ \ \ \ \ \ \ \ \ :\ \{ecc:\.4f\}'\)\
-\ \ \ \ \ \ \ \ print\(f'\ \ Semi\-major\ axis\ \ \ \ \ \ :\ \{sma:\.1f\}\ km'\)\
-\ \ \ \ \ \ \ \ T_orb\ =\ 2\ \*\ np\.pi\ \*\ np\.sqrt\(\(sma\ \*\ 1e3\)\*\*3\ /\ GM\)\
-\ \ \ \ \ \ \ \ print\(f'\ \ Orbital\ period\ \ \ \ \ \ \ :\ \{T_orb/60:\.1f\}\ min'\)\
-\
-\ \ \ \ print\(\)\
-\ \ \ \ print\('\ \ Δv\ budget\ \(Tsiolkovsky,\ ideal\):'\)\
-\ \ \ \ m0_s1\ =\ M_INITIAL\
-\ \ \ \ mf_s1\ =\ M_INITIAL\ \-\ S1_M_PROP\
-\ \ \ \ dv1\ \ \ =\ S1_ISP\ \*\ G0\ \*\ np\.log\(m0_s1\ /\ mf_s1\)\
-\ \ \ \ m0_s2\ =\ mf_s1\ \-\ S1_M_STRUCT\
-\ \ \ \ mf_s2\ =\ m0_s2\ \-\ S2_M_PROP\
-\ \ \ \ dv2\ \ \ =\ S2_ISP\ \*\ G0\ \*\ np\.log\(m0_s2\ /\ mf_s2\)\
-\ \ \ \ m0_s3\ =\ mf_s2\ \-\ S2_M_STRUCT\
-\ \ \ \ mf_s3\ =\ m0_s3\ \-\ S3_M_PROP\
-\ \ \ \ dv3\ \ \ =\ S3_ISP\ \*\ G0\ \*\ np\.log\(m0_s3\ /\ mf_s3\)\
-\ \ \ \ print\(f'\ \ \ \ Stage\ 1\ \ :\ \{dv1:\.0f\}\ m/s'\)\
-\ \ \ \ print\(f'\ \ \ \ Stage\ 2\ \ :\ \{dv2:\.0f\}\ m/s'\)\
-\ \ \ \ print\(f'\ \ \ \ Stage\ 3\ \ :\ \{dv3:\.0f\}\ m/s'\)\
-\ \ \ \ print\(f'\ \ \ \ Total\ \ \ \ :\ \{dv1\+dv2\+dv3:\.0f\}\ m/s'\)\
-\ \ \ \ print\(f'\ \ \ \ Needed\ \ \ :\ \~9\ 400\ m/s\ \ \(LEO\ losses\ included\)'\)\
-\ \ \ \ print\('='\ \*\ 62\)\
+"""
+3-stage rocket simulation to ISS orbit, ECI frame.
+Authors: Rubén Praena, Claudia Ros, Antoni Ruiz, Miguel Sanz,
+         Elishka Mrázek, Joel García, Giulia Latorre
+
+ECI: origin at Earth's centre, x toward vernal equinox, z toward North Pole.
+Launch from equator: r0=(R_EARTH,0,0), v0=(0,Ω·R_EARTH,0).
+Integrator: explicit Euler (dt=0.1 s in atmosphere, 5 s in vacuum),
+            leapfrog for coast/orbital phases to avoid energy drift.
+
+Known simplifications vs. a real mission:
+  1. Equatorial orbit — ISS is at 51.6°; a real launch needs a plane change.
+  2. Pre-programmed gravity turn, no active guidance.
+  3. Attitude changes modelled as thrust direction changes, no rigid-body dynamics.
+  4. Rendezvous = matching orbital speed at ISS altitude; proximity ops not simulated.
+  5. Stage 2 ignites immediately after Stage 1 separation.
+  6. Single Cd·A value for all phases.
+"""
+
+import sys
+import numpy as np
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+
+# SECTION 1 — PHYSICAL CONSTANTS
+
+GM          = 3.99e14      # m³/s²   gravitational parameter
+R_EARTH     = 6.378e6      # m       mean radius
+G0          = 9.80665      # m/s²    standard gravity
+OMEGA_EARTH = 7.27e-5      # rad/s   Earth's angular velocity
+
+# ISA atmospheric constants (same as rocket_simulation.py)
+RHO0    = 1.225
+T0_ISA  = 288.15
+L_TROP  = 0.0065
+R_AIR   = 287.05
+
+H_DRAG_CUTOFF = 100e3      # m   — no drag above the Kármán line
+H_ISS         = 408e3      # m   — ISS target altitude
+
+# Gravity-turn pitch profile (altitude limits)
+H_PITCH_START = 3e3        # m   — begin pitching at 3 km
+H_PITCH_END   = 80e3       # m   — fully horizontal at 80 km
+
+
+# SECTION 2 — ROCKET PARAMETERS
+# Soyuz-type architecture scaled for 500 kg payload.
+# Structural fraction ≈ 10% of stage propellant mass.
+# Stage 1 — booster, kerosene/LOX type
+S1_THRUST  = 800e3    # N      (800 kN)
+S1_ISP     = 290      # s
+S1_M_PROP  = 40000    # kg
+S1_M_STRUCT = 4000    # kg     (tank + engine, jettisoned at separation)
+
+# Stage 2 — upper stage, LH2/LOX type
+S2_THRUST  = 200e3    # N      (200 kN)
+S2_ISP     = 348      # s
+S2_M_PROP  = 8000     # kg
+S2_M_STRUCT = 1000    # kg
+
+# Stage 3 — maneuvering / RCS (remains attached to spacecraft)
+S3_THRUST  = 2e3      # N      (2 kN)
+S3_ISP     = 300      # s
+S3_M_PROP  = 500      # kg
+S3_M_STRUCT = 200     # kg     (spacecraft bus, stays with payload)
+
+M_PAYLOAD   = 500     # kg
+
+# Aerodynamics (constant across all phases — simplification 6)
+CD   = 0.30
+AREF = 4.0            # m²   (wider body than the toy rocket in main project)
+
+M_INITIAL = (S1_M_PROP + S1_M_STRUCT
+             + S2_M_PROP + S2_M_STRUCT
+             + S3_M_PROP + S3_M_STRUCT
+             + M_PAYLOAD)   # 54 200 kg total
+
+
+# SECTION 3 — ATMOSPHERIC DENSITY (ISA, adapted)
+
+def density_isa(z):
+    """ISA air density [kg/m³] at altitude z [m]. Returns 0 above 100 km."""
+    if z >= H_DRAG_CUTOFF:
+        return 0.0
+    z_km = z / 1000.0
+    if z_km < 11:
+        T = T0_ISA - L_TROP * z
+        p = 101325.0 * (T / T0_ISA) ** (G0 / (L_TROP * R_AIR))
+    elif z_km < 20:
+        T = 216.65
+        p = 22632.1 * np.exp(-G0 * (z - 11000) / (R_AIR * T))
+    elif z_km < 32:
+        T     = 216.65 + 0.001 * (z - 20000)
+        T_avg = (216.65 + T) / 2.0
+        p     = 5474.89 * np.exp(-G0 * (z - 20000) / (R_AIR * T_avg))
+    elif z_km < 47:
+        T     = 228.65 + 0.0028 * (z - 32000)
+        T_avg = (228.65 + T) / 2.0
+        p     = 868.02 * np.exp(-G0 * (z - 32000) / (R_AIR * T_avg))
+    elif z_km < 51:
+        T = 270.65
+        p = 110.91 * np.exp(-G0 * (z - 47000) / (R_AIR * T))
+    elif z_km < 71:
+        T     = 270.65 + 0.0028 * (z - 51000)
+        T_avg = (270.65 + T) / 2.0
+        p     = 66.939 * np.exp(-G0 * (z - 51000) / (R_AIR * T_avg))
+    elif z_km < 85:
+        T     = 270.65 + 0.002 * (z - 71000)
+        T_avg = (270.65 + T) / 2.0
+        p     = 3.9564 * np.exp(-G0 * (z - 71000) / (R_AIR * T_avg))
+    else:
+        return max(1.5e-5 * np.exp(-(z - 85000) / 6000.0), 0.0)
+    return max(p / (R_AIR * T), 0.0)
+
+
+# SECTION 4 — GEOMETRY HELPERS
+
+def prograde_hat(r):
+    """
+    Unit prograde vector in the orbital plane (perpendicular to r, eastward).
+    For an equatorial launch from +x axis: p_hat = ẑ × r_hat.
+    Works as long as the trajectory stays near the equatorial plane.
+    """
+    z_pole = np.array([0.0, 0.0, 1.0])
+    p = np.cross(z_pole, r)
+    norm = np.linalg.norm(p)
+    if norm < 1e-10:
+        return np.array([0.0, 1.0, 0.0])
+    return p / norm
+
+
+def pitch_angle(h):
+    """
+    Pre-programmed gravity turn: pitch angle α from radial (vertical).
+      h < H_PITCH_START  → α = 0     (pure vertical)
+      H_PITCH_START ≤ h ≤ H_PITCH_END → α linearly from 0 to π/2
+      h > H_PITCH_END    → α = π/2   (pure horizontal / prograde)
+    """
+    if h <= H_PITCH_START:
+        return 0.0
+    if h >= H_PITCH_END:
+        return np.pi / 2.0
+    frac = (h - H_PITCH_START) / (H_PITCH_END - H_PITCH_START)
+    return frac * np.pi / 2.0
+
+
+def thrust_hat(r, h, mode='gravity_turn'):
+    """
+    Thrust direction unit vector in ECI frame.
+
+    mode = 'gravity_turn'  : pitch angle from vertical based on altitude
+    mode = 'prograde'      : purely prograde (for circularisation)
+    mode = 'radial'        : purely radial/vertical (Stage 1 initial)
+    """
+    r_hat = r / np.linalg.norm(r)
+    t_hat = prograde_hat(r)
+
+    if mode == 'radial':
+        return r_hat
+    elif mode == 'prograde':
+        return t_hat
+    else:  # gravity_turn
+        alpha = pitch_angle(h)
+        return np.cos(alpha) * r_hat + np.sin(alpha) * t_hat
+
+
+def orbital_elements(r, v):
+    """
+    Returns (altitude_km, speed_ms, ecc, sma_km) for the current state.
+    sma = semi-major axis.
+    """
+    r_norm = np.linalg.norm(r)
+    v_norm = np.linalg.norm(v)
+    h_km   = (r_norm - R_EARTH) / 1e3
+
+    eps = v_norm**2 / 2 - GM / r_norm
+    sma = -GM / (2 * eps) if abs(eps) > 1 else float('inf')
+
+    e_vec = (v_norm**2 / GM - 1 / r_norm) * r - np.dot(r, v) / GM * v
+    ecc   = np.linalg.norm(e_vec)
+
+    return h_km, v_norm, ecc, sma / 1e3
+
+
+def _orbit_apogee_perigee(r, v):
+    """
+    Returns (apogee_altitude_m, perigee_altitude_m) of the Keplerian orbit.
+    Returns (inf, -inf) for escape trajectories.
+    """
+    r_norm = np.linalg.norm(r)
+    v_norm = np.linalg.norm(v)
+    eps    = v_norm**2 / 2 - GM / r_norm
+    if eps >= 0:
+        return float('inf'), float('-inf')
+    sma   = -GM / (2 * eps)
+    h_vec = np.cross(r, v)
+    h_mag = np.linalg.norm(h_vec)
+    ecc   = np.sqrt(max(1 + 2 * eps * h_mag**2 / GM**2, 0.0))
+    return sma * (1 + ecc) - R_EARTH, sma * (1 - ecc) - R_EARTH
+
+
+def apogee_altitude(r, v):
+    """Predicted apogee altitude [m]. Returns inf for escape trajectory."""
+    return _orbit_apogee_perigee(r, v)[0]
+
+
+# SECTION 5 — SIMULATION
+
+# Phase labels (used in output arrays)
+PHASE_S1   = 1   # Stage 1 burning
+PHASE_S2   = 2   # Stage 2 burning
+PHASE_COAS = 3   # Coast (suborbital) to first apogee
+PHASE_S3C  = 4   # Stage 3 circularisation at parking orbit
+PHASE_HOH  = 5   # Hohmann coast from parking orbit to ISS altitude
+PHASE_ORB  = 6   # ISS circular orbit + rendezvous
+
+PHASE_NAMES = {
+    PHASE_S1:   'Stage 1 burn',
+    PHASE_S2:   'Stage 2 burn',
+    PHASE_COAS: 'Coast',
+    PHASE_S3C:  'Circularisation',
+    PHASE_HOH:  'Hohmann transfer',
+    PHASE_ORB:  'ISS orbit / Rendezvous',
+}
+
+
+def simulate_multistage(dt_atm=0.1, dt_space=5.0):
+    """
+    Simulate the full 3-stage mission to ISS using explicit Euler integration.
+
+    Two time steps are used:
+      dt_atm   — inside atmosphere (h < 100 km), default 0.1 s
+      dt_space — in vacuum / orbit, default 5.0 s
+
+    Returns
+    -------
+    dict with keys:
+      't'      : (N,)   time [s]
+      'r'      : (N,3)  ECI position [m]
+      'v'      : (N,3)  ECI velocity [m/s]
+      'm'      : (N,)   total mass [kg]
+      'phase'  : (N,)   int phase label (see PHASE_* constants)
+      'events' : list of (t, label) tuples at key mission events
+      'h'      : (N,)   altitude [km]
+      'speed'  : (N,)   speed [m/s]
+    """
+    # initial state
+    r = np.array([R_EARTH, 0.0, 0.0], dtype=float)
+    v = np.array([0.0, OMEGA_EARTH * R_EARTH, 0.0], dtype=float)
+    m = float(M_INITIAL)
+
+    prop1 = float(S1_M_PROP)
+    prop2 = float(S2_M_PROP)
+    prop3 = float(S3_M_PROP)
+
+    phase = PHASE_S1
+    t     = 0.0
+
+    t_list     = []
+    r_list     = []
+    v_list     = []
+    m_list     = []
+    phase_list = []
+    events     = []
+
+    t_circ_done = None
+    T_MAX = 25000.0  # s — well beyond 2 orbital periods
+
+    # main integration loop
+    while t < T_MAX:
+
+        r_norm = np.linalg.norm(r)
+        h      = r_norm - R_EARTH
+        r_hat  = r / r_norm
+
+        t_list.append(t)
+        r_list.append(r.copy())
+        v_list.append(v.copy())
+        m_list.append(m)
+        phase_list.append(phase)
+
+        # time step
+        if h < H_DRAG_CUTOFF:
+            dt = dt_atm
+        elif phase in (PHASE_HOH, PHASE_ORB):
+            dt = 1.0
+        else:
+            dt = dt_space
+
+        # atmospheric drag (v_rel = velocity relative to co-rotating atmosphere)
+        if h < H_DRAG_CUTOFF:
+            rho   = density_isa(h)
+            v_atm = np.array([-OMEGA_EARTH * r[1], OMEGA_EARTH * r[0], 0.0])
+            v_rel = v - v_atm
+            vr    = np.linalg.norm(v_rel)
+            a_drag = -0.5 * CD * AREF * rho * vr / m * v_rel
+        else:
+            a_drag = np.zeros(3)
+
+        # thrust
+        a_thrust = np.zeros(3)
+
+        if phase == PHASE_S1 and prop1 > 0:
+            T_cur   = S1_THRUST
+            mdot    = T_cur / (S1_ISP * G0)
+            dm      = mdot * dt
+            if dm > prop1:
+                dm = prop1
+            t_hat_v  = thrust_hat(r, h, mode='gravity_turn')
+            a_thrust = (T_cur / m) * t_hat_v
+            prop1   -= dm
+            m       -= dm
+
+        elif phase == PHASE_S2 and prop2 > 0:
+            T_cur   = S2_THRUST
+            mdot    = T_cur / (S2_ISP * G0)
+            dm      = min(mdot * dt, prop2)
+            t_hat_v  = thrust_hat(r, h, mode='gravity_turn')
+            a_thrust = (T_cur / m) * t_hat_v
+            prop2   -= dm
+            m       -= dm
+
+        elif phase == PHASE_S3C and prop3 > 0:
+            v_radial_now = np.dot(v, r_hat)
+            v_tang_now   = np.sqrt(max(np.linalg.norm(v)**2 - v_radial_now**2, 0.0))
+            v_circ_now   = np.sqrt(GM / r_norm)
+            if v_tang_now >= v_circ_now:
+                pass
+            else:
+                T_cur   = S3_THRUST
+                mdot    = T_cur / (S3_ISP * G0)
+                dm      = min(mdot * dt, prop3)
+                t_hat_v  = thrust_hat(r, h, mode='prograde')
+                a_thrust = (T_cur / m) * t_hat_v
+                prop3   -= dm
+                m       -= dm
+
+        # coast/orbit phases: leapfrog (symplectic, avoids Euler energy drift)
+        if phase in (PHASE_COAS, PHASE_HOH, PHASE_ORB) and np.all(a_drag == 0) and np.all(a_thrust == 0):
+            # kick-drift-kick leapfrog
+            a_r    = -(GM / r_norm**2) * r_hat
+            v_half = v + a_r * (dt / 2)
+            r      = r + v_half * dt
+            r2     = np.linalg.norm(r)
+            a_r2   = -(GM / r2**2) * (r / r2)
+            v      = v_half + a_r2 * (dt / 2)
+        else:
+            a_grav  = -(GM / r_norm**2) * r_hat
+            a_total = a_grav + a_drag + a_thrust
+            r = r + v * dt
+            v = v + a_total * dt
+        t = t + dt
+
+        # phase transitions
+
+        if phase == PHASE_S1:
+            if prop1 <= 0:
+                phase = PHASE_S2
+                m    -= S1_M_STRUCT
+                events.append((t, 'Stage 1 separation'))
+
+        elif phase == PHASE_S2:
+            if prop2 <= 0:
+                phase = PHASE_COAS
+                m    -= S2_M_STRUCT
+                h_sep = (np.linalg.norm(r) - R_EARTH) / 1e3
+                events.append((t, f'Stage 2 burnout + separation at {h_sep:.1f} km — coasting to apogee'))
+
+        elif phase == PHASE_COAS:
+            v_radial = np.dot(v, r / np.linalg.norm(r))
+            if v_radial < 0 and t > 50:
+                phase = PHASE_S3C
+                events.append((t, f'Apogee at {(np.linalg.norm(r)-R_EARTH)/1e3:.1f} km — Stage 3 ignition'))
+
+        elif phase == PHASE_S3C:
+            v_radial_now = np.dot(v, r_hat)
+            v_tang_now   = np.sqrt(max(np.linalg.norm(v)**2 - v_radial_now**2, 0.0))
+            v_circ_now   = np.sqrt(GM / r_norm)
+            h_circ       = (r_norm - R_EARTH) / 1e3
+            _, _, ecc_now, _ = orbital_elements(r, v)
+            if v_tang_now >= v_circ_now:
+                r_park  = r_norm
+                r_iss   = R_EARTH + H_ISS
+                sma_hoh = (r_park + r_iss) / 2
+                v_hoh1  = np.sqrt(GM * (2 / r_park - 1 / sma_hoh))
+                dv_hoh1 = v_hoh1 - v_circ_now
+                t_hat_now = prograde_hat(r)
+                v    += dv_hoh1 * t_hat_now
+                dm_hoh1 = m * (1 - np.exp(-abs(dv_hoh1) / (S3_ISP * G0)))
+                m    -= dm_hoh1
+                prop3 = max(prop3 - dm_hoh1, 0.0)
+                phase = PHASE_HOH
+                events.append((t, f'Parking orbit {h_circ:.0f} km — Hohmann burn 1 ({dv_hoh1:.1f} m/s)'))
+            elif prop3 <= 0:
+                phase       = PHASE_ORB
+                t_circ_done = t
+                events.append((t, f'Stage 3 propellant depleted — ecc={ecc_now:.4f}, h={h_circ:.1f} km'))
+
+        elif phase == PHASE_HOH:
+            v_radial_hoh = np.dot(v, r_hat)
+            h_now = (r_norm - R_EARTH) / 1e3
+            if v_radial_hoh < 0 and h_now > H_ISS / 1e3 * 0.95:
+                v_circ_iss  = np.sqrt(GM / r_norm)
+                v_tang_hoh  = np.sqrt(max(np.linalg.norm(v)**2 - v_radial_hoh**2, 0.0))
+                dv_hoh2     = v_circ_iss - v_tang_hoh
+                if dv_hoh2 > 0 and prop3 > 0:
+                    t_hat_now = prograde_hat(r)
+                    v    += dv_hoh2 * t_hat_now
+                    dm_hoh2 = m * (1 - np.exp(-abs(dv_hoh2) / (S3_ISP * G0)))
+                    m    -= dm_hoh2
+                    prop3 = max(prop3 - dm_hoh2, 0.0)
+                _, _, ecc_iss, _ = orbital_elements(r, v)
+                h_iss_now = (np.linalg.norm(r) - R_EARTH) / 1e3
+                events.append((t, f'ISS orbit {h_iss_now:.0f} km — Hohmann burn 2 ({dv_hoh2:.1f} m/s), ecc={ecc_iss:.4f}'))
+                events.append((t, 'Attitude manoeuvres (pitch/yaw/roll) — ISS docking approach'))
+                phase       = PHASE_ORB
+                t_circ_done = t
+
+        elif phase == PHASE_ORB:
+            T_actual = 2 * np.pi * np.sqrt(r_norm**3 / GM)
+            if t_circ_done is not None and t - t_circ_done > T_actual:
+                events.append((t, 'ISS docking complete — mission success'))
+                t_list.append(t)
+                r_list.append(r.copy())
+                v_list.append(v.copy())
+                m_list.append(m)
+                phase_list.append(phase)
+                break
+
+        if np.linalg.norm(r) < R_EARTH - 1000:
+            events.append((t, 'CRASH — rocket fell back to Earth'))
+            break
+
+    # pack results
+    t_arr     = np.array(t_list)
+    r_arr     = np.array(r_list)
+    v_arr     = np.array(v_list)
+    m_arr     = np.array(m_list)
+    phase_arr = np.array(phase_list, dtype=int)
+
+    h_arr     = (np.linalg.norm(r_arr, axis=1) - R_EARTH) / 1e3
+    speed_arr = np.linalg.norm(v_arr, axis=1)
+
+    return {
+        't':      t_arr,
+        'r':      r_arr,
+        'v':      v_arr,
+        'm':      m_arr,
+        'phase':  phase_arr,
+        'events': events,
+        'h':      h_arr,
+        'speed':  speed_arr,
+    }
+
+
+# SECTION 6 — METRICS
+
+def print_mission_summary(data):
+    """Print a formatted summary of key mission milestones."""
+    t     = data['t']
+    h     = data['h']
+    speed = data['speed']
+    m     = data['m']
+    phase = data['phase']
+
+    print('=' * 62)
+    print('  3-STAGE ROCKET MISSION SUMMARY')
+    print('=' * 62)
+    print(f'  Initial mass      : {M_INITIAL/1e3:.2f} t')
+    print(f'  Payload           : {M_PAYLOAD:.0f} kg')
+    print()
+
+    for ev_t, ev_label in data['events']:
+        print(f'  t = {ev_t:7.1f} s  |  {ev_label}')
+    print()
+
+    print(f'  Max altitude      : {h.max():.2f} km')
+    print(f'  Max speed         : {speed.max():.1f} m/s')
+    print()
+
+    mask_orb = phase == PHASE_ORB
+    if mask_orb.any():
+        r_orb   = data['r'][mask_orb]
+        v_orb   = data['v'][mask_orb]
+        idx_mid = len(r_orb) // 2
+        h_o, v_o, ecc, sma = orbital_elements(r_orb[idx_mid], v_orb[idx_mid])
+        print(f'  Final orbit altitude : {h_o:.1f} km')
+        print(f'  Orbital speed        : {v_o:.1f} m/s')
+        print(f'  Eccentricity         : {ecc:.4f}')
+        print(f'  Semi-major axis      : {sma:.1f} km')
+        T_orb = 2 * np.pi * np.sqrt((sma * 1e3)**3 / GM)
+        print(f'  Orbital period       : {T_orb/60:.1f} min')
+
+    print()
+    print('  Δv budget (Tsiolkovsky, ideal):')
+    m0_s1 = M_INITIAL
+    mf_s1 = M_INITIAL - S1_M_PROP
+    dv1   = S1_ISP * G0 * np.log(m0_s1 / mf_s1)
+    m0_s2 = mf_s1 - S1_M_STRUCT
+    mf_s2 = m0_s2 - S2_M_PROP
+    dv2   = S2_ISP * G0 * np.log(m0_s2 / mf_s2)
+    m0_s3 = mf_s2 - S2_M_STRUCT
+    mf_s3 = m0_s3 - S3_M_PROP
+    dv3   = S3_ISP * G0 * np.log(m0_s3 / mf_s3)
+    print(f'    Stage 1  : {dv1:.0f} m/s')
+    print(f'    Stage 2  : {dv2:.0f} m/s')
+    print(f'    Stage 3  : {dv3:.0f} m/s')
+    print(f'    Total    : {dv1+dv2+dv3:.0f} m/s')
+    print(f'    Needed   : ~9 400 m/s  (LEO losses included)')
+    print('=' * 62)
 
 </script>
 
 <script type="text/x-source" id="src-bonus_analysis">
-"""\
-bonus_analysis\.py\ —\ Entry\ point\ for\ the\ 3\-stage\ mission\ bonus\ exercise\.\
-\
-Run:\
-\ \ \ \ python\ bonus_analysis\.py\
-\
-Produces:\
-\ \ \ \ \-\ Mission\ summary\ printed\ to\ console\
-\ \ \ \ \-\ Figure\ 1:\ Timeline\ \(altitude,\ speed,\ mass,\ phase\ portrait\)\
-\ \ \ \ \-\ Figure\ 2:\ Orbital\ view\ \(ECI\ x\-y\ plane\)\
-"""\
-\
-import\ matplotlib\.pyplot\ as\ plt\
-from\ bonus_multistage\ import\ simulate_multistage,\ print_mission_summary\
-from\ bonus_plot\ import\ plot_mission,\ plot_orbit\
-\
-\
-def\ main\(\):\
-\ \ \ \ print\('Running\ 3\-stage\ simulation\.\.\.'\)\
-\ \ \ \ data\ =\ simulate_multistage\(dt_atm=0\.1,\ dt_space=5\.0\)\
-\
-\ \ \ \ print_mission_summary\(data\)\
-\
-\ \ \ \ fig1\ =\ plot_mission\(data\)\
-\ \ \ \ fig2\ =\ plot_orbit\(data\)\
-\
-\ \ \ \ print\('\nClose\ plot\ windows\ to\ exit\.'\)\
-\ \ \ \ plt\.show\(\)\
-\
-\
-if\ __name__\ ==\ '__main__':\
-\ \ \ \ main\(\)\
+"""
+bonus_analysis.py — Entry point for the 3-stage mission bonus exercise.
+
+Run:
+    python bonus_analysis.py
+
+Produces:
+    - Mission summary printed to console
+    - Figure 1: Timeline (altitude, speed, mass, phase portrait)
+    - Figure 2: Orbital view (ECI x-y plane)
+"""
+
+import matplotlib.pyplot as plt
+from bonus_multistage import simulate_multistage, print_mission_summary
+from bonus_plot import plot_mission, plot_orbit
+
+
+def main():
+    print('Running 3-stage simulation...')
+    data = simulate_multistage(dt_atm=0.1, dt_space=5.0)
+
+    print_mission_summary(data)
+
+    fig1 = plot_mission(data)
+    fig2 = plot_orbit(data)
+
+    print('\nClose plot windows to exit.')
+    plt.show()
+
+
+if __name__ == '__main__':
+    main()
 
 </script>
 
 <script type="text/x-source" id="src-bonus_plot">
-"""\
-bonus_plot\.py\ —\ Interactive\ plots\ for\ the\ 3\-stage\ mission\.\
-\
-Produces\ two\ figures:\
-\ \ Figure\ 1\ \(4\-panel\ timeline\):\ \ altitude,\ speed,\ mass,\ drag\-free\ indicator\
-\ \ Figure\ 2\ \(orbital\ view\):\ \ \ \ \ \ 2\-D\ ECI\ x\-y\ plane\ showing\ trajectory\ \+\ ISS\ orbit\
-"""\
-\
-import\ numpy\ as\ np\
-import\ matplotlib\.pyplot\ as\ plt\
-import\ matplotlib\.patches\ as\ mpatches\
-from\ matplotlib\.lines\ import\ Line2D\
-from\ matplotlib\.widgets\ import\ Slider\
-\
-\#\ colours\ \(same\ palette\ as\ rocket_simulation\.py\)\
-C_NAVY\ \ \ =\ '\#0D2B55'\
-C_BLUE\ \ \ =\ '\#2A6496'\
-C_LTBLUE\ =\ '\#5B9BD5'\
-C_GOLD\ \ \ =\ '\#B07D2A'\
-C_RED\ \ \ \ =\ '\#C0392B'\
-C_GREEN\ \ =\ '\#27AE60'\
-C_GRID\ \ \ =\ '\#D0D8E4'\
-\
-\#\ phase\ colours\
-PHASE_COLORS\ =\ \{\
-\ \ \ \ 1:\ C_LTBLUE,\ \ \ \#\ Stage\ 1\
-\ \ \ \ 2:\ C_BLUE,\ \ \ \ \ \#\ Stage\ 2\
-\ \ \ \ 3:\ C_NAVY,\ \ \ \ \ \#\ Coast\ \(suborbital\)\
-\ \ \ \ 4:\ C_GOLD,\ \ \ \ \ \#\ Circularisation\
-\ \ \ \ 5:\ '\#8E44AD',\ \ \#\ Hohmann\ transfer\
-\ \ \ \ 6:\ C_GREEN,\ \ \ \ \#\ ISS\ orbit\ /\ Rendezvous\
-\}\
-PHASE_NAMES\ =\ \{\
-\ \ \ \ 1:\ 'Stage\ 1\ burn',\
-\ \ \ \ 2:\ 'Stage\ 2\ burn',\
-\ \ \ \ 3:\ 'Coast',\
-\ \ \ \ 4:\ 'Circularisation',\
-\ \ \ \ 5:\ 'Hohmann\ transfer',\
-\ \ \ \ 6:\ 'ISS\ orbit\ /\ Rendezvous',\
-\}\
-\
-\
-def\ _style_fig\(fig\):\
-\ \ \ \ fig\.patch\.set_facecolor\('white'\)\
-\
-\
-def\ _style_ax\(ax,\ xlabel='',\ ylabel='',\ title=''\):\
-\ \ \ \ ax\.set_facecolor\('\#F8FAFD'\)\
-\ \ \ \ ax\.tick_params\(labelsize=9,\ colors=C_NAVY\)\
-\ \ \ \ ax\.spines\[\['top',\ 'right'\]\]\.set_visible\(False\)\
-\ \ \ \ ax\.spines\[\['left',\ 'bottom'\]\]\.set_color\(C_GRID\)\
-\ \ \ \ ax\.grid\(True,\ color=C_GRID,\ linewidth=0\.7,\ linestyle='\-\-'\)\
-\ \ \ \ if\ xlabel:\
-\ \ \ \ \ \ \ \ ax\.set_xlabel\(xlabel,\ fontsize=9,\ color=C_NAVY\)\
-\ \ \ \ if\ ylabel:\
-\ \ \ \ \ \ \ \ ax\.set_ylabel\(ylabel,\ fontsize=9,\ color=C_NAVY\)\
-\ \ \ \ if\ title:\
-\ \ \ \ \ \ \ \ ax\.set_title\(title,\ fontsize=10,\ fontweight='bold',\ color=C_NAVY\)\
-\
-\
-def\ _phase_segments\(t,\ y,\ phase\):\
-\ \ \ \ """\
-\ \ \ \ Split\ y\-array\ into\ coloured\ segments\ by\ phase\ for\ multi\-colour\ line\ plots\.\
-\ \ \ \ Returns\ list\ of\ \(t_seg,\ y_seg,\ color\)\ tuples\.\
-\ \ \ \ """\
-\ \ \ \ segments\ =\ \[\]\
-\ \ \ \ phases\ \ \ =\ np\.unique\(phase\)\
-\ \ \ \ for\ p\ in\ phases:\
-\ \ \ \ \ \ \ \ mask\ =\ phase\ ==\ p\
-\ \ \ \ \ \ \ \ idx\ \ =\ np\.where\(mask\)\[0\]\
-\ \ \ \ \ \ \ \ if\ len\(idx\)\ ==\ 0:\
-\ \ \ \ \ \ \ \ \ \ \ \ continue\
-\ \ \ \ \ \ \ \ gaps\ =\ np\.where\(np\.diff\(idx\)\ >\ 1\)\[0\]\ \+\ 1\
-\ \ \ \ \ \ \ \ blocks\ =\ np\.split\(idx,\ gaps\)\
-\ \ \ \ \ \ \ \ for\ blk\ in\ blocks:\
-\ \ \ \ \ \ \ \ \ \ \ \ if\ len\(blk\)\ <\ 2:\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ continue\
-\ \ \ \ \ \ \ \ \ \ \ \ start\ =\ max\(blk\[0\]\ \-\ 1,\ 0\)\
-\ \ \ \ \ \ \ \ \ \ \ \ sl\ \ \ \ =\ slice\(start,\ blk\[\-1\]\ \+\ 1\)\
-\ \ \ \ \ \ \ \ \ \ \ \ segments\.append\(\(t\[sl\],\ y\[sl\],\ PHASE_COLORS\[p\]\)\)\
-\ \ \ \ return\ segments\
-\
-\
-def\ plot_mission\(data\):\
-\ \ \ \ """\
-\ \ \ \ 4\-panel\ interactive\ figure:\
-\ \ \ \ \ \ \[0,0\]\ Altitude\ \[km\]\ vs\ time\
-\ \ \ \ \ \ \[0,1\]\ Speed\ \[m/s\]\ vs\ time\
-\ \ \ \ \ \ \[1,0\]\ Mass\ \[kg\]\ vs\ time\
-\ \ \ \ \ \ \[1,1\]\ Altitude\ \[km\]\ vs\ speed\ \[m/s\]\ \ \(phase\ portrait\)\
-\ \ \ \ """\
-\ \ \ \ t\ \ \ \ \ =\ data\['t'\]\
-\ \ \ \ h\ \ \ \ \ =\ data\['h'\]\
-\ \ \ \ speed\ =\ data\['speed'\]\
-\ \ \ \ m\ \ \ \ \ =\ data\['m'\]\
-\ \ \ \ phase\ =\ data\['phase'\]\
-\ \ \ \ events\ =\ data\['events'\]\
-\
-\ \ \ \ fig\ =\ plt\.figure\(figsize=\(14,\ 11\)\)\
-\ \ \ \ _style_fig\(fig\)\
-\ \ \ \ fig\.suptitle\('3\-Stage\ Rocket\ Mission\ —\ Timeline',\ fontsize=13,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ fontweight='bold',\ color=C_NAVY,\ y=0\.97\)\
-\
-\ \ \ \ gs\ =\ fig\.add_gridspec\(2,\ 2,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ left=0\.09,\ right=0\.96,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ bottom=0\.22,\ top=0\.93,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ hspace=0\.48,\ wspace=0\.38\)\
-\
-\ \ \ \ ax_h\ \ \ =\ fig\.add_subplot\(gs\[0,\ 0\]\)\
-\ \ \ \ ax_v\ \ \ =\ fig\.add_subplot\(gs\[0,\ 1\]\)\
-\ \ \ \ ax_m\ \ \ =\ fig\.add_subplot\(gs\[1,\ 0\]\)\
-\ \ \ \ ax_hv\ \ =\ fig\.add_subplot\(gs\[1,\ 1\]\)\
-\
-\ \ \ \ _style_ax\(ax_h,\ \ 't\ \[s\]',\ 'Altitude\ \[km\]',\ \ \ \ 'Altitude\ vs\ Time'\)\
-\ \ \ \ _style_ax\(ax_v,\ \ 't\ \[s\]',\ 'Speed\ \[m/s\]',\ \ \ \ \ \ \ 'Speed\ vs\ Time'\)\
-\ \ \ \ _style_ax\(ax_m,\ \ 't\ \[s\]',\ 'Mass\ \[kg\]',\ \ \ \ \ \ \ \ \ 'Mass\ vs\ Time'\)\
-\ \ \ \ _style_ax\(ax_hv,\ 'Speed\ \[m/s\]',\ 'Altitude\ \[km\]',\ 'Altitude\ vs\ Speed'\)\
-\
-\ \ \ \ \#\ coloured\ segments\ per\ phase\
-\ \ \ \ for\ ax,\ ydata\ in\ \[\(ax_h,\ h\),\ \(ax_v,\ speed\),\ \(ax_m,\ m\)\]:\
-\ \ \ \ \ \ \ \ segs\ =\ _phase_segments\(t,\ ydata,\ phase\)\
-\ \ \ \ \ \ \ \ for\ ts,\ ys,\ col\ in\ segs:\
-\ \ \ \ \ \ \ \ \ \ \ \ ax\.plot\(ts,\ ys,\ color=col,\ linewidth=1\.5\)\
-\
-\ \ \ \ \#\ Phase\ portrait\ \(not\ time\-based\)\
-\ \ \ \ segs_hv\ =\ _phase_segments\(speed,\ h,\ phase\)\
-\ \ \ \ for\ xs,\ ys,\ col\ in\ segs_hv:\
-\ \ \ \ \ \ \ \ ax_hv\.plot\(xs,\ ys,\ color=col,\ linewidth=1\.5\)\
-\
-\ \ \ \ \#\ ISS\ altitude\ reference\ line\
-\ \ \ \ from\ bonus_multistage\ import\ H_ISS\
-\ \ \ \ h_iss_km\ =\ H_ISS\ /\ 1e3\
-\ \ \ \ for\ ax\ in\ \[ax_h\]:\
-\ \ \ \ \ \ \ \ ax\.axhline\(h_iss_km,\ color=C_GREEN,\ linewidth=1\.0,\ linestyle=':',\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ label=f'ISS\ \(\{h_iss_km:\.0f\}\ km\)'\)\
-\ \ \ \ \ \ \ \ ax\.legend\(fontsize=8,\ loc='upper\ left'\)\
-\
-\ \ \ \ \#\ event\ markers\
-\ \ \ \ for\ ev_t,\ ev_label\ in\ events:\
-\ \ \ \ \ \ \ \ for\ ax,\ ydata\ in\ \[\(ax_h,\ h\),\ \(ax_v,\ speed\),\ \(ax_m,\ m\)\]:\
-\ \ \ \ \ \ \ \ \ \ \ \ ax\.axvline\(ev_t,\ color='\#999999',\ linewidth=0\.7,\ linestyle=':'\)\
-\
-\ \ \ \ \#\ shared\ phase\ legend\
-\ \ \ \ legend_patches\ =\ \[\
-\ \ \ \ \ \ \ \ mpatches\.Patch\(color=PHASE_COLORS\[p\],\ label=PHASE_NAMES\[p\]\)\
-\ \ \ \ \ \ \ \ for\ p\ in\ sorted\(PHASE_COLORS\)\
-\ \ \ \ \]\
-\ \ \ \ fig\.legend\(handles=legend_patches,\ loc='lower\ center',\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ ncol=5,\ fontsize=8,\ framealpha=0\.9,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ bbox_to_anchor=\(0\.5,\ 0\.01\)\)\
-\
-\ \ \ \ \#\ separator\ above\ legend\
-\ \ \ \ fig\.add_artist\(Line2D\(\[0\.04,\ 0\.96\],\ \[0\.13,\ 0\.13\],\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ transform=fig\.transFigure,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ color=C_GRID,\ linewidth=1\.0\)\)\
-\
-\ \ \ \ \#\ interactive\ slider\
-\ \ \ \ ax_sl\ =\ fig\.add_axes\(\[0\.09,\ 0\.090,\ 0\.57,\ 0\.022\]\)\
-\ \ \ \ slider\ =\ Slider\(ax_sl,\ '',\ t\[0\],\ t\[\-1\],\ valinit=t\[0\],\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ color=C_LTBLUE,\ track_color=C_GRID\)\
-\ \ \ \ slider\.valtext\.set_visible\(False\)\
-\
-\ \ \ \ fig\.text\(0\.68,\ 0\.101,\ 't\ \[s\]:',\ fontsize=9,\ color=C_NAVY,\
-\ \ \ \ \ \ \ \ \ \ \ \ \ ha='right',\ va='center'\)\
-\
-\ \ \ \ \#\ Dots\ for\ each\ time\-based\ panel\
-\ \ \ \ dots\ =\ \{\}\
-\ \ \ \ for\ ax,\ ydata,\ key\ in\ \[\(ax_h,\ h,\ 'h'\),\ \(ax_v,\ speed,\ 'v'\),\ \(ax_m,\ m,\ 'm'\)\]:\
-\ \ \ \ \ \ \ \ d,\ =\ ax\.plot\(\[\],\ \[\],\ 'o',\ color=C_NAVY,\ markersize=5,\ zorder=5\)\
-\ \ \ \ \ \ \ \ dots\[key\]\ =\ \(d,\ ydata\)\
-\
-\ \ \ \ _lock\ =\ \[False\]\
-\
-\ \ \ \ def\ update\(val\):\
-\ \ \ \ \ \ \ \ if\ _lock\[0\]:\
-\ \ \ \ \ \ \ \ \ \ \ \ return\
-\ \ \ \ \ \ \ \ _lock\[0\]\ =\ True\
-\ \ \ \ \ \ \ \ ti\ =\ float\(slider\.val\)\
-\ \ \ \ \ \ \ \ idx\ =\ np\.searchsorted\(t,\ ti\)\
-\ \ \ \ \ \ \ \ idx\ =\ min\(idx,\ len\(t\)\ \-\ 1\)\
-\ \ \ \ \ \ \ \ for\ key,\ \(dot,\ ydata\)\ in\ dots\.items\(\):\
-\ \ \ \ \ \ \ \ \ \ \ \ dot\.set_data\(\[t\[idx\]\],\ \[ydata\[idx\]\]\)\
-\ \ \ \ \ \ \ \ fig\.canvas\.draw_idle\(\)\
-\ \ \ \ \ \ \ \ _lock\[0\]\ =\ False\
-\
-\ \ \ \ slider\.on_changed\(update\)\
-\ \ \ \ update\(t\[0\]\)\
-\
-\ \ \ \ plt\.show\(block=False\)\
-\ \ \ \ return\ fig\
-\
-\
-def\ plot_orbit\(data\):\
-\ \ \ \ """\
-\ \ \ \ Figure\ 2:\ 2\-D\ ECI\ orbital\ view\ \(x\-y\ equatorial\ plane\)\.\
-\ \ \ \ Shows\ rocket\ trajectory,\ Earth\ disc,\ and\ ISS\ target\ orbit\.\
-\ \ \ \ """\
-\ \ \ \ from\ bonus_multistage\ import\ R_EARTH,\ H_ISS,\ GM\
-\
-\ \ \ \ r\ \ \ \ \ =\ data\['r'\]\
-\ \ \ \ phase\ =\ data\['phase'\]\
-\
-\ \ \ \ fig,\ ax\ =\ plt\.subplots\(figsize=\(8,\ 8\)\)\
-\ \ \ \ _style_fig\(fig\)\
-\ \ \ \ _style_ax\(ax,\ 'ECI\ x\ \[km\]',\ 'ECI\ y\ \[km\]',\ '3\-Stage\ Trajectory\ —\ Orbital\ View\ \(ECI\)'\)\
-\ \ \ \ fig\.suptitle\('Orbital\ View',\ fontsize=13,\ fontweight='bold',\ color=C_NAVY,\ y=0\.97\)\
-\
-\ \ \ \ \#\ Earth\ disc\
-\ \ \ \ theta_earth\ =\ np\.linspace\(0,\ 2\ \*\ np\.pi,\ 360\)\
-\ \ \ \ ax\.fill\(R_EARTH\ /\ 1e3\ \*\ np\.cos\(theta_earth\),\
-\ \ \ \ \ \ \ \ \ \ \ \ R_EARTH\ /\ 1e3\ \*\ np\.sin\(theta_earth\),\
-\ \ \ \ \ \ \ \ \ \ \ \ color='\#DDEEFF',\ zorder=1\)\
-\ \ \ \ ax\.plot\(R_EARTH\ /\ 1e3\ \*\ np\.cos\(theta_earth\),\
-\ \ \ \ \ \ \ \ \ \ \ \ R_EARTH\ /\ 1e3\ \*\ np\.sin\(theta_earth\),\
-\ \ \ \ \ \ \ \ \ \ \ \ color=C_NAVY,\ linewidth=1\.0,\ zorder=2,\ label='Earth\ surface'\)\
-\
-\ \ \ \ \#\ ISS\ circular\ orbit\
-\ \ \ \ r_iss\ =\ \(R_EARTH\ \+\ H_ISS\)\ /\ 1e3\
-\ \ \ \ ax\.plot\(r_iss\ \*\ np\.cos\(theta_earth\),\
-\ \ \ \ \ \ \ \ \ \ \ \ r_iss\ \*\ np\.sin\(theta_earth\),\
-\ \ \ \ \ \ \ \ \ \ \ \ color=C_GREEN,\ linewidth=1\.2,\ linestyle='\-\-',\ zorder=3,\ label='ISS\ orbit\ \(408\ km\)'\)\
-\
-\ \ \ \ \#\ Trajectory\ coloured\ by\ phase\
-\ \ \ \ x_km\ =\ r\[:,\ 0\]\ /\ 1e3\
-\ \ \ \ y_km\ =\ r\[:,\ 1\]\ /\ 1e3\
-\ \ \ \ phases_uniq\ =\ np\.unique\(phase\)\
-\ \ \ \ for\ p\ in\ phases_uniq:\
-\ \ \ \ \ \ \ \ mask\ =\ phase\ ==\ p\
-\ \ \ \ \ \ \ \ ax\.plot\(x_km\[mask\],\ y_km\[mask\],\ color=PHASE_COLORS\[p\],\
-\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ linewidth=1\.4,\ label=PHASE_NAMES\[p\],\ zorder=4\)\
-\
-\ \ \ \ \#\ Launch\ marker\
-\ \ \ \ ax\.plot\(R_EARTH\ /\ 1e3,\ 0,\ '\*',\ color=C_GOLD,\ markersize=12,\
-\ \ \ \ \ \ \ \ \ \ \ \ zorder=5,\ label='Launch\ site\ \(equator\)'\)\
-\
-\ \ \ \ ax\.set_aspect\('equal'\)\
-\ \ \ \ ax\.legend\(fontsize=8,\ loc='upper\ right'\)\
-\
-\ \ \ \ plt\.tight_layout\(\)\
-\ \ \ \ plt\.show\(block=False\)\
-\ \ \ \ return\ fig\
+"""
+bonus_plot.py — Interactive plots for the 3-stage mission.
+
+Produces two figures:
+  Figure 1 (4-panel timeline):  altitude, speed, mass, drag-free indicator
+  Figure 2 (orbital view):      2-D ECI x-y plane showing trajectory + ISS orbit
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.lines import Line2D
+from matplotlib.widgets import Slider
+
+# colours (same palette as rocket_simulation.py)
+C_NAVY   = '#0D2B55'
+C_BLUE   = '#2A6496'
+C_LTBLUE = '#5B9BD5'
+C_GOLD   = '#B07D2A'
+C_RED    = '#C0392B'
+C_GREEN  = '#27AE60'
+C_GRID   = '#D0D8E4'
+
+# phase colours
+PHASE_COLORS = {
+    1: C_LTBLUE,   # Stage 1
+    2: C_BLUE,     # Stage 2
+    3: C_NAVY,     # Coast (suborbital)
+    4: C_GOLD,     # Circularisation
+    5: '#8E44AD',  # Hohmann transfer
+    6: C_GREEN,    # ISS orbit / Rendezvous
+}
+PHASE_NAMES = {
+    1: 'Stage 1 burn',
+    2: 'Stage 2 burn',
+    3: 'Coast',
+    4: 'Circularisation',
+    5: 'Hohmann transfer',
+    6: 'ISS orbit / Rendezvous',
+}
+
+
+def _style_fig(fig):
+    fig.patch.set_facecolor('white')
+
+
+def _style_ax(ax, xlabel='', ylabel='', title=''):
+    ax.set_facecolor('#F8FAFD')
+    ax.tick_params(labelsize=9, colors=C_NAVY)
+    ax.spines[['top', 'right']].set_visible(False)
+    ax.spines[['left', 'bottom']].set_color(C_GRID)
+    ax.grid(True, color=C_GRID, linewidth=0.7, linestyle='--')
+    if xlabel:
+        ax.set_xlabel(xlabel, fontsize=9, color=C_NAVY)
+    if ylabel:
+        ax.set_ylabel(ylabel, fontsize=9, color=C_NAVY)
+    if title:
+        ax.set_title(title, fontsize=10, fontweight='bold', color=C_NAVY)
+
+
+def _phase_segments(t, y, phase):
+    """
+    Split y-array into coloured segments by phase for multi-colour line plots.
+    Returns list of (t_seg, y_seg, color) tuples.
+    """
+    segments = []
+    phases   = np.unique(phase)
+    for p in phases:
+        mask = phase == p
+        idx  = np.where(mask)[0]
+        if len(idx) == 0:
+            continue
+        gaps = np.where(np.diff(idx) > 1)[0] + 1
+        blocks = np.split(idx, gaps)
+        for blk in blocks:
+            if len(blk) < 2:
+                continue
+            start = max(blk[0] - 1, 0)
+            sl    = slice(start, blk[-1] + 1)
+            segments.append((t[sl], y[sl], PHASE_COLORS[p]))
+    return segments
+
+
+def plot_mission(data):
+    """
+    4-panel interactive figure:
+      [0,0] Altitude [km] vs time
+      [0,1] Speed [m/s] vs time
+      [1,0] Mass [kg] vs time
+      [1,1] Altitude [km] vs speed [m/s]  (phase portrait)
+    """
+    t     = data['t']
+    h     = data['h']
+    speed = data['speed']
+    m     = data['m']
+    phase = data['phase']
+    events = data['events']
+
+    fig = plt.figure(figsize=(14, 11))
+    _style_fig(fig)
+    fig.suptitle('3-Stage Rocket Mission — Timeline', fontsize=13,
+                 fontweight='bold', color=C_NAVY, y=0.97)
+
+    gs = fig.add_gridspec(2, 2,
+                          left=0.09, right=0.96,
+                          bottom=0.22, top=0.93,
+                          hspace=0.48, wspace=0.38)
+
+    ax_h   = fig.add_subplot(gs[0, 0])
+    ax_v   = fig.add_subplot(gs[0, 1])
+    ax_m   = fig.add_subplot(gs[1, 0])
+    ax_hv  = fig.add_subplot(gs[1, 1])
+
+    _style_ax(ax_h,  't [s]', 'Altitude [km]',    'Altitude vs Time')
+    _style_ax(ax_v,  't [s]', 'Speed [m/s]',       'Speed vs Time')
+    _style_ax(ax_m,  't [s]', 'Mass [kg]',         'Mass vs Time')
+    _style_ax(ax_hv, 'Speed [m/s]', 'Altitude [km]', 'Altitude vs Speed')
+
+    # coloured segments per phase
+    for ax, ydata in [(ax_h, h), (ax_v, speed), (ax_m, m)]:
+        segs = _phase_segments(t, ydata, phase)
+        for ts, ys, col in segs:
+            ax.plot(ts, ys, color=col, linewidth=1.5)
+
+    # Phase portrait (not time-based)
+    segs_hv = _phase_segments(speed, h, phase)
+    for xs, ys, col in segs_hv:
+        ax_hv.plot(xs, ys, color=col, linewidth=1.5)
+
+    # ISS altitude reference line
+    from bonus_multistage import H_ISS
+    h_iss_km = H_ISS / 1e3
+    for ax in [ax_h]:
+        ax.axhline(h_iss_km, color=C_GREEN, linewidth=1.0, linestyle=':',
+                   label=f'ISS ({h_iss_km:.0f} km)')
+        ax.legend(fontsize=8, loc='upper left')
+
+    # event markers
+    for ev_t, ev_label in events:
+        for ax, ydata in [(ax_h, h), (ax_v, speed), (ax_m, m)]:
+            ax.axvline(ev_t, color='#999999', linewidth=0.7, linestyle=':')
+
+    # shared phase legend
+    legend_patches = [
+        mpatches.Patch(color=PHASE_COLORS[p], label=PHASE_NAMES[p])
+        for p in sorted(PHASE_COLORS)
+    ]
+    fig.legend(handles=legend_patches, loc='lower center',
+               ncol=5, fontsize=8, framealpha=0.9,
+               bbox_to_anchor=(0.5, 0.01))
+
+    # separator above legend
+    fig.add_artist(Line2D([0.04, 0.96], [0.13, 0.13],
+                          transform=fig.transFigure,
+                          color=C_GRID, linewidth=1.0))
+
+    # interactive slider
+    ax_sl = fig.add_axes([0.09, 0.090, 0.57, 0.022])
+    slider = Slider(ax_sl, '', t[0], t[-1], valinit=t[0],
+                    color=C_LTBLUE, track_color=C_GRID)
+    slider.valtext.set_visible(False)
+
+    fig.text(0.68, 0.101, 't [s]:', fontsize=9, color=C_NAVY,
+             ha='right', va='center')
+
+    # Dots for each time-based panel
+    dots = {}
+    for ax, ydata, key in [(ax_h, h, 'h'), (ax_v, speed, 'v'), (ax_m, m, 'm')]:
+        d, = ax.plot([], [], 'o', color=C_NAVY, markersize=5, zorder=5)
+        dots[key] = (d, ydata)
+
+    _lock = [False]
+
+    def update(val):
+        if _lock[0]:
+            return
+        _lock[0] = True
+        ti = float(slider.val)
+        idx = np.searchsorted(t, ti)
+        idx = min(idx, len(t) - 1)
+        for key, (dot, ydata) in dots.items():
+            dot.set_data([t[idx]], [ydata[idx]])
+        fig.canvas.draw_idle()
+        _lock[0] = False
+
+    slider.on_changed(update)
+    update(t[0])
+
+    plt.show(block=False)
+    return fig
+
+
+def plot_orbit(data):
+    """
+    Figure 2: 2-D ECI orbital view (x-y equatorial plane).
+    Shows rocket trajectory, Earth disc, and ISS target orbit.
+    """
+    from bonus_multistage import R_EARTH, H_ISS, GM
+
+    r     = data['r']
+    phase = data['phase']
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    _style_fig(fig)
+    _style_ax(ax, 'ECI x [km]', 'ECI y [km]', '3-Stage Trajectory — Orbital View (ECI)')
+    fig.suptitle('Orbital View', fontsize=13, fontweight='bold', color=C_NAVY, y=0.97)
+
+    # Earth disc
+    theta_earth = np.linspace(0, 2 * np.pi, 360)
+    ax.fill(R_EARTH / 1e3 * np.cos(theta_earth),
+            R_EARTH / 1e3 * np.sin(theta_earth),
+            color='#DDEEFF', zorder=1)
+    ax.plot(R_EARTH / 1e3 * np.cos(theta_earth),
+            R_EARTH / 1e3 * np.sin(theta_earth),
+            color=C_NAVY, linewidth=1.0, zorder=2, label='Earth surface')
+
+    # ISS circular orbit
+    r_iss = (R_EARTH + H_ISS) / 1e3
+    ax.plot(r_iss * np.cos(theta_earth),
+            r_iss * np.sin(theta_earth),
+            color=C_GREEN, linewidth=1.2, linestyle='--', zorder=3, label='ISS orbit (408 km)')
+
+    # Trajectory coloured by phase
+    x_km = r[:, 0] / 1e3
+    y_km = r[:, 1] / 1e3
+    phases_uniq = np.unique(phase)
+    for p in phases_uniq:
+        mask = phase == p
+        ax.plot(x_km[mask], y_km[mask], color=PHASE_COLORS[p],
+                linewidth=1.4, label=PHASE_NAMES[p], zorder=4)
+
+    # Launch marker
+    ax.plot(R_EARTH / 1e3, 0, '*', color=C_GOLD, markersize=12,
+            zorder=5, label='Launch site (equator)')
+
+    ax.set_aspect('equal')
+    ax.legend(fontsize=8, loc='upper right')
+
+    plt.tight_layout()
+    plt.show(block=False)
+    return fig
 
 </script>
 
